@@ -1,0 +1,111 @@
+### Login
+
+# @name login
+POST https://api.rinaacc.com.br/login HTTP/1.1
+Content-Type: application/json
+
+# Como pego o username e password do .env? Tem que ser com $processEnv?
+# Como o .env é lido? Tem que ser com $processEnv?
+
+
+{
+
+  "login":"{{$dotenv USERNAME}}",
+  "password":"{{$dotenv PASSWORD}}"
+}
+
+###
+
+@token = {{login.response.body.token}}
+
+### Get all aircrafts
+# @name aircrafts
+GET https://api.rinaacc.com.br/aircraft/get-all?limit=300 HTTP/1.1
+Authorization: {{token}}
+
+###
+
+@aircraft_prefix ={{aircrafts.response.body.aircrafts}}
+
+@initial_date = "2026-05-01"
+@final_date = "2026-05-09T23:59:00Z"
+
+### Search audits
+
+# @name audits
+POST https://api.rinaacc.com.br/search HTTP/1.1
+Content-Type: application/json
+Authorization: {{token}}
+
+{
+
+"base":["AJU","BEL","BJP","CFB","CAW","SNAO","CIZ","FST","FOR","GIG","GMR","ITA","JPA","MCP","MEA","MAO","MRC","OIA","PRC","PUC","RAO","SSA","TST","VIX"],"operator":["AEROLEO","AZUL","BRISTOW","CHC","CDS","FOTOTERRA","LIDER","OMNI","RICO","TOTAL","TREINAMENTO","VOE"],"aircraftPrefix":["PP-NLX","PR-AEH","PR-AEK","PR-AEV","PR-AIE","PR-AIF","PR-AIG","PR-AQH","PR-AQJ","PR-AQZ","PR-BGB","PR-BGC","PR-BGG","PR-BGJ","PR-BGM","PR-BGN","PR-BGP","PR-BGQ","PR-BGT","PR-BGU","PR-BGX","PR-BGY","PR-BGZ","PR-CDV","PR-CFX","PR-CGD","PR-CGE","PR-CGF","PR-CGH","PR-CGJ","PR-CGK","PR-CGN","PR-CGO","PR-CGP","PR-CGS","PR-CGT","PR-CGU","PR-CGW","PR-CHA","PR-CHC","PR-CHD","PR-CHE","PR-CHG","PR-CHI","PR-CHQ","PR-CHS","PR-CHT","PR-CPV","PR-CPX","PR-EFX","PR-EPV","PR-JAA","PR-JAR","PR-JAW","PR-JBE","PR-JBI","PR-JBK","PR-JBO","PR-JBP","PR-JBQ","PR-JBU","PR-JBX","PR-JHA","PR-JHC","PR-JHD","PR-JHE","PR-JHG","PR-JHH","PR-JHI","PR-JKC","PR-JKE","PR-JKJ","PR-JKK","PR-JKM","PR-LBA","PR-LCD","PR-LCH","PR-LCO","PR-LCP","PR-LCQ","PR-LCR","PR-LCT","PR-LCV","PR-LCZ","PR-LDC","PR-LDE","PR-LDG","PR-LDT","PR-LDV","PR-LDW","PR-LDZ","PR-MEO","PR-MEP","PR-MEX","PR-MEZ","PR-MLL","PR-MPN","PR-MPO","PR-MPY","PR-MPZ","PR-MRT","PR-NLN","PR-NSP","PR-OFC","PR-OFD","PR-OFE","PR-OFH","PR-OFJ","PR-OFK","PR-OFL","PR-OHA","PR-OHB","PR-OHC","PR-OHD","PR-OHE","PR-OHF","PR-OHG","PR-OHI","PR-OHJ","PR-OHK","PR-OHL","PR-OHN","PR-OHO","PR-OHP","PR-OHQ","PR-OHR","PR-OHS","PR-OHU","PR-OHV","PR-OHX","PR-OHY","PR-OHZ","PR-OMA","PR-OMB","PR-OMH","PR-OMK","PR-OMT","PR-OMY","PR-OOA","PR-OOB","PR-OOC","PR-OOG","PR-OOI","PR-OOL","PR-OOM","PR-OON","PR-OOP","PR-OOQ","PR-OOR","PR-OOS","PR-OOT","PR-OOU","PR-OOV","PR-OOW","PR-OOX","PR-OOY","PR-OTD","PR-OTF","PR-OTH","PR-OTI","PR-OTN","PR-OTP","PR-OTQ","PR-OTR","PR-OTS","PR-OTU","PR-OTW","PR-OTX","PR-OTY","PR-PDP","PR-PDS","PR-PDT","PR-PMS","PR-SEC","PR-SED","PR-SEE","PR-SEF","PR-SEO","PR-SES","PR-SET","PR-SEU","PR-SHL","PR-TESTE","PR-TTK","PR-WSG","PR-YXB","PR-YXT","PS-BTA","PS-BTB","PS-BTC","PS-BTD","PS-BTF","PS-BTJ","PS-BTK","PS-BTL","PS-BTO","PS-BTP","PS-BTW","PS-CDR","PS-CDT","PS-CDU","PS-CDV","PS-CDW","PS-CPU","PS-FCB","PS-GBN","PS-GBP","PS-LSC","PS-MSV","PT-GAD","PT-GAX","PT-MFE","PT-OCV","PT-SHO","TESTE"],"auditingType":["ACCI","RMNR","ACCD","Extra","ACC"],"contract":"","reportName":"","ata":null,"initialDateDoc":{{initial_date}},"finalDateDoc":{{final_date}},"initialDatePub":null,"finalDatePub":null
+
+}
+
+# Retorna o tipo de auditoria, data realizada, prefixo da aeronave, nome do relatorio, nao conformidades anteriores de mnt e operacional e o id da auditoria - quando tem nao conformidade retorna apenas a ata. Entao da para pegar o tipo da ata e verificar numericamente quantas tiveram.
+
+# Falta saber se a aeronave é titular ou backup, numero do contrato, operadora, base,modelo, nao conformidade esta aberta ou ja foi resolvida,data de resolucao da nao conformidade
+
+
+### Get all reports
+
+# @name reports
+GET https://api.rinaacc.com.br/reports HTTP/1.1
+Authorization: {{token}}
+
+###
+
+@audit_id = 69ff143e368f6d001d66a5cb
+
+###
+
+# @name report
+GET https://api.rinaacc.com.br/report/{{audit_id}} HTTP/1.1
+Authorization: {{token}}
+
+
+# Retorna o numero do contrato, operadora, base, base abreviada, modelo, tipo de auditoria, prefixo as nao conformidades anteriores atual, itens de acompanhamento autl a anteriores, url das photos
+
+###
+@auditingReport = {{audit_id}}
+@aircraftReport = {{audit_id}}
+@operatorReport = {{audit_id}}
+@powerCheckReport = {{audit_id}}
+@observationOprReport = {{audit_id}}
+@weighingReport = {{audit_id}}
+@specificItemsReport = {{audit_id}}
+@observationMntReport = {{audit_id}}
+@_opinionReport = {{report.response.body._opinion}}
+@notepadReport = {{audit_id}}
+
+###
+
+GET https://api.rinaacc.com.br/auditingReport/{{auditingReport}} HTTP/1.1
+Authorization: {{token}}
+
+###
+
+
+# _specificItems,_notepad,_operator,_auditing, _opinion
+
+
+###
+
+
+###
+
+# _specificItems,_notepad,_operator,_auditing, _opinion
+
+GET https://api.rinaacc.com.br/opinionReport/{{_opinionReport}} HTTP/1.1
+Authorization: {{token}}
+
+
+###
+
+GET https://api.rinaacc.com.br/aircraftReport/{{aircraftReport}} HTTP/1.1
+Authorization: {{token}}
+
+
+###
+

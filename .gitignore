@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv
+.env
+
+
+data/raw/*.json
+data/processed/*.csv
+data/processed/*.json
+data/processed/*.parquet
+data/exports/
+data/tmp/
+data/.pipeline.lock
+
+# Local Docker/runtime artifacts
+docker-compose.override.yml
