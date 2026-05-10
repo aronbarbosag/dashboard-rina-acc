@@ -51,10 +51,14 @@ def test_env_variables():
 
 
 def test_clean_env_value_strips_render_quotes_and_spaces():
-    assert clean_env_value('"https://api.rinaacc.com.br"') == "https://api.rinaacc.com.br"
+    assert (
+        clean_env_value('"https://api.rinaacc.com.br"') == "https://api.rinaacc.com.br"
+    )
     assert clean_env_value(" 'secret' ") == "secret"
     assert clean_env_value(None) is None
-    assert clean_api_url('"https://api.rinaacc.com.br/"') == "https://api.rinaacc.com.br"
+    assert (
+        clean_api_url('"https://api.rinaacc.com.br/"') == "https://api.rinaacc.com.br"
+    )
 
 
 def test_setters_and_initial_login_status():

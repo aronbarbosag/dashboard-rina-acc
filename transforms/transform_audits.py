@@ -111,7 +111,10 @@ def get_active_aircraft_configurations(aircraft_report):
 
     active_configurations = []
     for configuration in configurations:
-        if not isinstance(configuration, dict) or configuration.get("status") is not True:
+        if (
+            not isinstance(configuration, dict)
+            or configuration.get("status") is not True
+        ):
             continue
 
         label = normalize_configuration_label(
@@ -289,9 +292,9 @@ def build_nonconformities_dataframe(audits, reports):
                     if audit_item is not None
                     else {}
                 )
-                normalized_item["ata"] = normalized_item.get("ata") or audit_item_data.get(
+                normalized_item["ata"] = normalized_item.get(
                     "ata"
-                )
+                ) or audit_item_data.get("ata")
                 normalized_item["description"] = normalized_item.get(
                     "description"
                 ) or audit_item_data.get("description")
@@ -305,7 +308,8 @@ def build_nonconformities_dataframe(audits, reports):
                 rows.append(
                     {
                         "audit_id": report.get("_id") or audit.get("_id"),
-                        "report_name": report.get("reportName") or audit.get("reportName"),
+                        "report_name": report.get("reportName")
+                        or audit.get("reportName"),
                         "date": report.get("date") or audit.get("date"),
                         "publication_date": report.get("publicationDate")
                         or audit.get("publicationDate"),
@@ -451,22 +455,23 @@ def build_recurrence_table(dataframe, group_columns):
         .reset_index()
     )
     recurrence_table["recurrence_rate"] = (
-        recurrence_table["recurrent_audits"]
-        / recurrence_table["audits_with_previous_nonconformity"].replace(0, pd.NA)
-    ).fillna(0).round(2)
-
-    return (
-        recurrence_table.sort_values(
-            [
-                "recurrent_audits",
-                "recurrence_rate",
-                "current_nonconformities_count",
-                "audits_count",
-            ],
-            ascending=False,
+        (
+            recurrence_table["recurrent_audits"]
+            / recurrence_table["audits_with_previous_nonconformity"].replace(0, pd.NA)
         )
-        .reset_index(drop=True)
+        .fillna(0)
+        .round(2)
     )
+
+    return recurrence_table.sort_values(
+        [
+            "recurrent_audits",
+            "recurrence_rate",
+            "current_nonconformities_count",
+            "audits_count",
+        ],
+        ascending=False,
+    ).reset_index(drop=True)
 
 
 def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
@@ -492,9 +497,7 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         ).round(2)
     else:
         monthly_nonconformity_rate["nonconformities_count"] = pd.Series(dtype=int)
-        monthly_nonconformity_rate["nonconformities_per_audit"] = pd.Series(
-            dtype=float
-        )
+        monthly_nonconformity_rate["nonconformities_per_audit"] = pd.Series(dtype=float)
 
     nonconformities_by_operator = count_by(
         nonconformities_dataframe,
@@ -512,9 +515,7 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         "nonconformities_count",
     )
     aircraft_ranking = (
-        audits_dataframe[
-            ["aircraft_prefix", "nonconformity_total", "audit_id"]
-        ]
+        audits_dataframe[["aircraft_prefix", "nonconformity_total", "audit_id"]]
         .groupby("aircraft_prefix", dropna=False)
         .agg(
             nonconformities_count=("nonconformity_total", "sum"),
@@ -564,9 +565,7 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         .sort_values(["nonconformities_count", "audits_count"], ascending=False)
         .reset_index()
         if not nonconformities_dataframe.empty
-        else pd.DataFrame(
-            columns=["ata", "nonconformities_count", "audits_count"]
-        )
+        else pd.DataFrame(columns=["ata", "nonconformities_count", "audits_count"])
     )
     recurrence_by_aircraft = build_recurrence_table(
         audits_dataframe,
@@ -640,8 +639,12 @@ def run_transform(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
         nonconformities_dataframe,
     )
     save_json(processed_dir / KPIS_FILE, kpis)
-    save_dataframe(processed_dir / AUDITS_BY_MONTH_FILE, analysis_tables["audits_by_month"])
-    save_dataframe(processed_dir / AUDITS_BY_TYPE_FILE, analysis_tables["audits_by_type"])
+    save_dataframe(
+        processed_dir / AUDITS_BY_MONTH_FILE, analysis_tables["audits_by_month"]
+    )
+    save_dataframe(
+        processed_dir / AUDITS_BY_TYPE_FILE, analysis_tables["audits_by_type"]
+    )
     save_dataframe(
         processed_dir / NONCONFORMITIES_BY_MONTH_FILE,
         analysis_tables["nonconformities_by_month"],

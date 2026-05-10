@@ -228,12 +228,14 @@ def test_build_nonconformities_dataframe_enriches_rows_with_report_context():
     assert len(dataframe) == 1
     assert set(dataframe["area"]) == {"manutencao"}
     assert set(dataframe["period"]) == {"current"}
-    assert bool(
-        dataframe.loc[dataframe["item_id"] == "nc-1", "is_resolved"].iloc[0]
-    ) is True
-    assert dataframe.loc[dataframe["item_id"] == "nc-1", "operator_abbreviation"].iloc[
-        0
-    ] == "OMNI"
+    assert (
+        bool(dataframe.loc[dataframe["item_id"] == "nc-1", "is_resolved"].iloc[0])
+        is True
+    )
+    assert (
+        dataframe.loc[dataframe["item_id"] == "nc-1", "operator_abbreviation"].iloc[0]
+        == "OMNI"
+    )
 
 
 def test_build_kpis_calculates_main_dashboard_numbers():
@@ -291,9 +293,7 @@ def test_build_analysis_tables_creates_chart_ready_outputs():
         },
     ]
     assert set(tables["audits_by_type"]["auditing_type"]) == {"ACC", "ACCD"}
-    assert tables["nonconformities_by_operator"].iloc[0][
-        "nonconformities_count"
-    ] == 1
+    assert tables["nonconformities_by_operator"].iloc[0]["nonconformities_count"] == 1
     assert tables["nonconformities_by_area"].to_dict("records") == [
         {"area": "manutencao", "nonconformities_count": 1}
     ]

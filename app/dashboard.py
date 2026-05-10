@@ -3,6 +3,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from html import escape
+from importlib import import_module
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -14,19 +15,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts import run_pipeline as pipeline
-from transforms.transform_audits import (
-    AUDITS_PROCESSED_FILE,
-    KPIS_FILE,
-    NONCONFORMITIES_PROCESSED_FILE,
-    PROCESSED_DIR,
-    build_analysis_tables,
-    build_kpis,
-)
+pipeline = import_module("scripts.run_pipeline")
+transform_audits = import_module("transforms.transform_audits")
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+AUDITS_PROCESSED_FILE = transform_audits.AUDITS_PROCESSED_FILE
+KPIS_FILE = transform_audits.KPIS_FILE
+NONCONFORMITIES_PROCESSED_FILE = transform_audits.NONCONFORMITIES_PROCESSED_FILE
+PROCESSED_DIR = transform_audits.PROCESSED_DIR
+build_analysis_tables = transform_audits.build_analysis_tables
+build_kpis = transform_audits.build_kpis
+
 RAW_DIR = Path("data/raw")
 FETCH_METADATA_FILE = RAW_DIR / "fetch_metadata.json"
 LOGO_PATH = PROJECT_ROOT / "assets" / "logo-rina.png"
@@ -46,113 +44,12 @@ MONTH_LABELS = {
     "11": "Nov",
     "12": "Dez",
 }
-
-# RINA brand palette (used for layout/UI elements)
-GREEN_PTB = "#008543"
-LIGHT_GREEN_PTB = "#C4D600"
-YELLOW_PTB = "#FDC82F"
-BLUE_PTB = "#006298"
-CYAN_PTB = "#00B2A9"
-ORANGE_PTB = "#ED8B00"
-GREY_PTB = "#75787B"
-BLUE_DASHBOARD = "#3B82F6"
-PURPLE_DASHBOARD = "#6366F1"
-RED_DASHBOARD = "#EF4444"
-GREEN_DASHBOARD = "#14B8A6"
-ORANGE_DASHBOARD = "#F59E0B"
-SMOOTH_GREY = "#F8FAFC"
-
-CHART_BLUE = "#2f6fed"  # Auditorias por mes
 CHART_TEAL = "#139a8f"
 CHART_GOLD = "#d89c22"
-CHART_RED = "#d65f5f"  # NC por mes
-CHART_PURPLE = "#7c5cc4"  # ATAs / Taxa
+CHART_RED = "#d65f5f"
+CHART_PURPLE = "#7c5cc4"
 CHART_HEIGHT = 320
 
-
-# ---------------------------------------------------------------------------
-# Chart palette: vibrant, coordinated with KPI card icons
-# Each entry is (start, end) — start = darker top/left, end = lighter bottom/right
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Inline SVG icons (Lucide-style)
-# ---------------------------------------------------------------------------
-ICONS = {
-    "clipboard-check": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>'
-        '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>'
-        '<path d="m9 14 2 2 4-4"/></svg>'
-    ),
-    "alert-triangle": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>'
-        '<path d="M12 9v4"/><path d="M12 17h.01"/></svg>'
-    ),
-    "bar-chart": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<line x1="12" x2="12" y1="20" y2="10"/>'
-        '<line x1="18" x2="18" y1="20" y2="4"/>'
-        '<line x1="6" x2="6" y1="20" y2="16"/></svg>'
-    ),
-    "check-circle": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>'
-        '<polyline points="22 4 12 14.01 9 11.01"/></svg>'
-    ),
-    "building": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<rect width="16" height="20" x="4" y="2" rx="2"/>'
-        '<path d="M9 22v-4h6v4"/>'
-        '<path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/>'
-        '<path d="M12 10h.01"/><path d="M12 14h.01"/>'
-        '<path d="M16 10h.01"/><path d="M16 14h.01"/>'
-        '<path d="M8 10h.01"/><path d="M8 14h.01"/></svg>'
-    ),
-    "plane": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2'
-        "c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 "
-        '3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>'
-    ),
-    "doc-check": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
-        '<polyline points="14 2 14 8 20 8"/>'
-        '<path d="m9 15 2 2 4-4"/></svg>'
-    ),
-    "trend-up": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>'
-        '<polyline points="16 7 22 7 22 13"/></svg>'
-    ),
-    "trend-down": (
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-        '<polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/>'
-        '<polyline points="16 17 22 17 22 11"/></svg>'
-    ),
-    "helicopter": (
-        """
-            <svg viewBox="0 0 1024 1024" class="icon" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="#000000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M659.2 439.1H423.6c-13.9 0-25.2-11.3-25.2-25.2v-39.3c0-13.9 11.3-25.2 25.2-25.2h235.5c13.9 0 25.2 11.3 25.2 25.2v39.3c0.1 13.9-11.2 25.2-25.1 25.2z" fill="#B6CDEF"></path><path d="M659.2 454.1H423.6c-22.2 0-40.2-18-40.2-40.2v-39.3c0-22.2 18-40.2 40.2-40.2h235.5c22.2 0 40.2 18 40.2 40.2v39.3c0.1 22.2-18 40.2-40.1 40.2z m-235.6-89.7c-5.6 0-10.2 4.6-10.2 10.2v39.3c0 5.6 4.6 10.2 10.2 10.2h235.5c5.6 0 10.2-4.6 10.2-10.2v-39.3c0-5.6-4.6-10.2-10.2-10.2H423.6z" fill="#0F53A8"></path><path d="M183.6 417.8h548.7s154.5 32 205.6 208.6c13.6 47.1-14.9 105.7-63.9 105.7H615.1s-143.8 0.1-271.7-218.4L109 487 29.1 295.3h42.6l111.9 122.5z" fill="#B6CDEF"></path><path d="M615.1 747.1c-1.7 0-40.3-0.3-94.9-29-31.4-16.5-62-39.2-90.9-67.4-34.2-33.4-66.2-74.8-95-123l-227-25.8c-5.4-0.6-10.1-4.1-12.2-9.1L15.3 301c-1.9-4.6-1.4-9.9 1.4-14.1 2.8-4.2 7.5-6.7 12.5-6.7h42.6c4.2 0 8.2 1.8 11.1 4.9l107.4 117.6h542.1c1 0 2 0.1 3 0.3 1.7 0.4 42 8.9 88.9 40.3 27.5 18.4 51.6 40.8 71.8 66.7 25.1 32.3 44.1 70 56.3 112.2 8.9 30.9 2.3 67.3-16.8 92.8-15.6 20.7-37.4 32.1-61.5 32.1h-259z m-495.6-274l225.6 25.6c4.7 0.5 8.9 3.2 11.3 7.3 28.1 48.1 59.3 89.1 92.7 121.9 26.5 26.1 54.5 47.1 83.1 62.4 48.5 26 82.7 26.6 83 26.6H874c18.5 0 30.6-10.9 37.5-20.1 13.7-18.2 18.4-44.3 12-66.4-11-38.2-28.1-72.3-50.6-101.4-18-23.3-39.6-43.5-64.2-60.1-37.6-25.4-71.1-34.5-78.1-36.3h-547c-4.2 0-8.2-1.8-11.1-4.9L65.1 310.3H51.6l67.9 162.8z" fill="#0F53A8"></path><path d="M160.8 454.2m-68.4 0a68.4 68.4 0 1 0 136.8 0 68.4 68.4 0 1 0-136.8 0Z" fill="#89B7F5"></path><path d="M160.8 537.6c-46 0-83.4-37.4-83.4-83.4 0-46 37.4-83.4 83.4-83.4s83.4 37.4 83.4 83.4c0 45.9-37.4 83.4-83.4 83.4z m0-136.8c-29.4 0-53.4 23.9-53.4 53.4s23.9 53.4 53.4 53.4 53.4-23.9 53.4-53.4-24-53.4-53.4-53.4z" fill="#0F53A8"></path><path d="M487.3 549.2m-35.5 0a35.5 35.5 0 1 0 71 0 35.5 35.5 0 1 0-71 0Z" fill="#89B7F5"></path><path d="M487.3 599.7c-27.9 0-50.5-22.7-50.5-50.5s22.7-50.5 50.5-50.5c27.9 0 50.5 22.7 50.5 50.5s-22.7 50.5-50.5 50.5z m0-71c-11.3 0-20.5 9.2-20.5 20.5s9.2 20.5 20.5 20.5 20.5-9.2 20.5-20.5-9.2-20.5-20.5-20.5z" fill="#0F53A8"></path><path d="M595.6 549.2m-35.5 0a35.5 35.5 0 1 0 71 0 35.5 35.5 0 1 0-71 0Z" fill="#89B7F5"></path><path d="M595.6 599.7c-27.9 0-50.5-22.7-50.5-50.5s22.7-50.5 50.5-50.5 50.5 22.7 50.5 50.5-22.7 50.5-50.5 50.5z m0-71c-11.3 0-20.5 9.2-20.5 20.5s9.2 20.5 20.5 20.5 20.5-9.2 20.5-20.5-9.2-20.5-20.5-20.5z" fill="#0F53A8"></path><path d="M813.3 454.2s34.8 0 109.5 130.5c24.3 42.5-99.3 28.7-148.3 28.7L719 481.7l94.3-27.5z" fill="#89B7F5"></path><path d="M853.7 630.5c-14.5 0-30.6-0.5-47.8-1.2-11.8-0.5-22.9-0.9-31.3-0.9-6 0-11.5-3.6-13.8-9.2l-55.5-131.7c-1.7-3.9-1.6-8.4 0.3-12.3s5.2-6.8 9.3-8l94.2-27.5c1.4-0.4 2.8-0.6 4.2-0.6 5.4 0 17.4 2.6 36.8 20.2 25.1 22.7 54 62.4 85.7 117.9 8.5 14.9 4.5 26 1.3 31.2-10.6 17.7-40.7 22.1-83.4 22.1z m-69.1-32c6.9 0.2 14.5 0.5 22.5 0.8 21.9 0.9 46.7 1.8 67.8 0.7 24.2-1.3 32.9-4.9 35.6-6.5-0.2-0.4-0.4-0.8-0.7-1.3-56.7-99.1-88.6-118.8-96.4-122.4l-74 21.6 45.2 107.1z" fill="#0F53A8"></path><path d="M568 213.1h48.9v136.4H568z" fill="#B6CDEF"></path><path d="M616.9 364.4H568c-8.3 0-15-6.7-15-15V213.1c0-8.3 6.7-15 15-15h48.9c8.3 0 15 6.7 15 15v136.4c0 8.2-6.7 14.9-15 14.9z m-33.9-30h18.9V228.1H583v106.3z" fill="#0F53A8"></path><path d="M178.3 213.1H1004" fill="#B6CDEF"></path><path d="M1004 228.1H178.3c-8.3 0-15-6.7-15-15s6.7-15 15-15H1004c8.3 0 15 6.7 15 15s-6.7 15-15 15z" fill="#0F53A8"></path><path d="M513.9 790.7h427.4" fill="#B6CDEF"></path><path d="M941.3 805.7H513.9c-8.3 0-15-6.7-15-15s6.7-15 15-15h427.4c8.3 0 15 6.7 15 15s-6.7 15-15 15z" fill="#0F53A8"></path><path d="M631.1 732.1v58.6" fill="#B6CDEF"></path><path d="M631.1 805.7c-8.3 0-15-6.7-15-15v-58.6c0-8.3 6.7-15 15-15s15 6.7 15 15v58.6c0 8.3-6.7 15-15 15z" fill="#0F53A8"></path><path d="M833.5 732.1v58.6" fill="#B6CDEF"></path><path d="M833.5 805.7c-8.3 0-15-6.7-15-15v-58.6c0-8.3 6.7-15 15-15s15 6.7 15 15v58.6c0 8.3-6.7 15-15 15z" fill="#0F53A8"></path></g></svg>
-
-        """
-    ),
-}
-
-# ---------------------------------------------------------------------------
-# Page setup
-# ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="RINA ACC Dashboard",
     page_icon=str(FAVICON_PATH),
@@ -168,16 +65,8 @@ def apply_style():
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
         :root {
-            /* RINA brand */
             --rina-dark-blue: #13294B;
             --rina-blue: #0076A5;
-            --rina-light-blue: #3EB1C8;
-            --rina-light-grey: #D9D9D6;
-            --rina-grey: #97999B;
-            --btn-green: #4ADE80;
-            --bg-rina: linear-gradient(224.15deg, #0076A5 -15.92%, #13294B 70%);
-
-            /* Surface tokens */
             --background: #F4F6FA;
             --surface: #FFFFFF;
             --surface-soft: #F8FAFC;
@@ -188,14 +77,10 @@ def apply_style():
             --accent: var(--rina-blue);
             --accent-soft: #E6F2F8;
             --sidebar: #FAFCFE;
-
-            /* Effects */
             --shadow-sm: 0 1px 2px rgba(19, 41, 75, 0.04);
             --shadow-md: 0 4px 12px rgba(19, 41, 75, 0.06);
-            --shadow-lg: 0 12px 28px rgba(19, 41, 75, 0.10);
             --radius-sm: 8px;
             --radius-md: 12px;
-            --radius-lg: 16px;
         }
 
         html, body, [class*="css"] {
@@ -204,9 +89,6 @@ def apply_style():
 
         .stApp { background: var(--background); color: var(--text); }
 
-        /* ========================================================== */
-        /*  SIDEBAR                                                   */
-        /* ========================================================== */
         [data-testid="stSidebar"] {
             background: var(--sidebar);
             border-right: 1px solid var(--border);
@@ -272,7 +154,6 @@ def apply_style():
 
         .sidebar-logo img {
             max-height: 200px;
-
             width: auto;
             object-fit: contain;
         }
@@ -284,15 +165,11 @@ def apply_style():
             letter-spacing: 0.18em;
         }
 
-        /* ========================================================== */
-        /*  LAYOUT                                                    */
-        /* ========================================================== */
         .block-container {
             padding-top: 3rem;
             padding-bottom: 3rem;
             max-width: 1400px;
             margin: 0 auto;
-
         }
 
         h1, h2, h3 {
@@ -300,28 +177,12 @@ def apply_style():
             color: var(--rina-dark-blue);
         }
 
-        /* ========================================================== */
-        /*  PAGE HEADER  (light layout matching reference design)     */
-        /* ========================================================== */
         .page-header {
             display: flex;
             align-items: flex-start;
             gap: 1rem;
             margin: 0.2rem 0 1.4rem 0;
         }
-
-        .page-header-icon {
-            background: rgba(30, 136, 229, 0.12);
-            color: #1E88E5;
-            padding: 0.7rem;
-            border-radius: 12px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .page-header-icon svg { width: 30px; height: 30px; }
 
         .page-header-content { flex: 1; min-width: 0; }
 
@@ -346,9 +207,6 @@ def apply_style():
             margin: 0;
         }
 
-        /* ========================================================== */
-        /*  KPI CARDS                                                 */
-        /* ========================================================== */
         .metric-card {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -434,9 +292,6 @@ def apply_style():
             letter-spacing: -0.025em;
         }
 
-        /* ========================================================== */
-        /*  CHART CARDS  (bordered container wraps title+caption+chart)
-        /* ========================================================== */
         div.stColumn {
             background: #ffffff !important;
             border-radius: var(--radius-md) !important;
@@ -474,7 +329,6 @@ def apply_style():
             margin: 0 0 0.6rem 0;
         }
 
-        /* Strip the default chart wrapper styling since it's now inside our card */
         [data-testid="stVegaLiteChart"], .stAltairChart {
             background: transparent !important;
             border: none !important;
@@ -482,9 +336,6 @@ def apply_style():
             padding: 0 !important;
         }
 
-        /* ========================================================== */
-        /*  SECTION TITLES (for tables outside chart cards)           */
-        /* ========================================================== */
         .section-title {
             font-size: 1.1rem;
             font-weight: 700;
@@ -499,9 +350,6 @@ def apply_style():
             margin: 0 0 0.6rem 0;
         }
 
-        /* ========================================================== */
-        /*  DATAFRAME                                                 */
-        /* ========================================================== */
         div[data-testid="stDataFrame"] {
             border: 1px solid var(--border);
             border-radius: var(--radius-md);
@@ -509,9 +357,6 @@ def apply_style():
             box-shadow: var(--shadow-sm);
         }
 
-        /* ========================================================== */
-        /*  TABS                                                      */
-        /* ========================================================== */
         .stTabs [data-baseweb="tab-list"] { gap: 0.4rem; border-bottom: 1px solid var(--border); }
 
         .stTabs [data-baseweb="tab"] {
@@ -528,9 +373,6 @@ def apply_style():
             font-weight: 600;
         }
 
-        /* ========================================================== */
-        /*  DIVIDERS / ALERTS                                         */
-        /* ========================================================== */
         hr, [data-testid="stDivider"] {
             border: none !important;
             border-top: 1px solid var(--border) !important;
@@ -542,9 +384,6 @@ def apply_style():
             border: 1px solid var(--border);
         }
 
-        /* ========================================================== */
-        /*  PRINT                                                     */
-        /* ========================================================== */
         @media print {
             [data-testid="stSidebar"], header, footer { display: none !important; }
             .block-container { padding: 0.6rem !important; }
@@ -570,9 +409,6 @@ def apply_style():
     )
 
 
-# ---------------------------------------------------------------------------
-# Data loading helpers
-# ---------------------------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def load_csv(path):
     path = Path(path)
@@ -639,10 +475,7 @@ def get_last_update_label():
     return "dados ainda nao gerados"
 
 
-# ---------------------------------------------------------------------------
-# UI helpers
-# ---------------------------------------------------------------------------
-def metric_card(label, value, icon=None, accent="blue", trend=None, tooltip=None):
+def metric_card(label, value, icon=None, accent="blue", tooltip=None):
     metric_symbols = {
         "clipboard-check": "✓",
         "alert-triangle": "!",
@@ -710,9 +543,6 @@ def format_month_label(value):
     return f"{MONTH_LABELS.get(month, month)}/{year[-2:]}"
 
 
-# ---------------------------------------------------------------------------
-# Chart helpers
-# ---------------------------------------------------------------------------
 def chart_config(chart):
     return (
         chart.configure_view(strokeWidth=0, fill="#ffffff")
@@ -744,7 +574,6 @@ def chart_config(chart):
 def make_bar_chart(
     dataframe, x, y, tooltip, height=CHART_HEIGHT, sort="-x", color=CHART_TEAL
 ):
-    """Vertical bars with a solid fill color."""
     if dataframe.empty:
         return None
 
@@ -773,7 +602,6 @@ def make_bar_chart(
 def make_horizontal_bar(
     dataframe, y, x, tooltip, height=CHART_HEIGHT, color=CHART_TEAL
 ):
-    """Horizontal bars with a solid fill color."""
     if dataframe.empty:
         return None
 
@@ -803,7 +631,6 @@ def make_horizontal_bar(
 def make_area_line_chart(
     dataframe, x, y, tooltip, sort, color=CHART_TEAL, height=CHART_HEIGHT
 ):
-    """Soft area under a line for trend visualization."""
     if dataframe.empty:
         return None
 
@@ -833,7 +660,6 @@ def make_area_line_chart(
 
 
 def render_chart(title, caption, chart):
-    """Each chart is wrapped in a bordered container with title + caption inside."""
     with st.container(border=True):
         st.markdown(f'<div class="chart-title">{title}</div>', unsafe_allow_html=True)
         st.markdown(
@@ -845,9 +671,6 @@ def render_chart(title, caption, chart):
             st.altair_chart(chart, width="stretch")
 
 
-# ---------------------------------------------------------------------------
-# Sidebar – filters and update
-# ---------------------------------------------------------------------------
 def filter_dataframe(audits, nonconformities):
     st.sidebar.markdown("### Filtros")
 
@@ -1064,48 +887,6 @@ def run_update_from_sidebar(audits):
             st.error(f"Nao foi possivel atualizar os dados: {error}")
 
 
-# ---------------------------------------------------------------------------
-# Trend computation (last 30 days vs previous 30 days)
-# ---------------------------------------------------------------------------
-def compute_period_trends(audits, nonconformities):
-    """Returns a dict of optional trend dicts for KPI cards. Safe with empty/sparse data."""
-    trends = {"audits": None, "nonconformities": None}
-
-    if audits.empty or "date" not in audits.columns:
-        return trends
-
-    max_date = audits["date"].max()
-    if pd.isna(max_date):
-        return trends
-
-    cutoff = max_date - pd.Timedelta(days=30)
-    prev_cutoff = cutoff - pd.Timedelta(days=30)
-
-    recent_audits = int((audits["date"] > cutoff).sum())
-    previous_audits = int(
-        ((audits["date"] > prev_cutoff) & (audits["date"] <= cutoff)).sum()
-    )
-
-    recent_ncs = (
-        int((nonconformities["date"] > cutoff).sum())
-        if not nonconformities.empty and "date" in nonconformities.columns
-        else 0
-    )
-    previous_ncs = (
-        int(
-            (
-                (nonconformities["date"] > prev_cutoff)
-                & (nonconformities["date"] <= cutoff)
-            ).sum()
-        )
-        if not nonconformities.empty and "date" in nonconformities.columns
-        else 0
-    )
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 def main():
     apply_style()
 
@@ -1121,8 +902,6 @@ def main():
     run_update_from_sidebar(audits)
 
     last_update = get_last_update_label()
-
-    # ---- Page header ----
     st.markdown(
         f"""
         <div class="page-header">
@@ -1155,8 +934,6 @@ def main():
         filtered_audits,
         filtered_nonconformities,
     )
-
-    # ---- KPI cards ----
     metric_columns = st.columns(6)
     with metric_columns[0]:
         metric_card(
@@ -1210,8 +987,6 @@ def main():
         )
 
     st.divider()
-
-    # ---- Monthly tables ----
     audits_by_month = add_month_label(
         tables["audits_by_month"].sort_values("audit_month")
     )
@@ -1446,8 +1221,6 @@ def main():
         )
 
     st.divider()
-
-    # ---- Tables ----
     table_columns = [
         "date",
         "auditing_type",
