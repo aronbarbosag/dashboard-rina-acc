@@ -1,18 +1,3 @@
-## Etapa 1: Extrair Dados
-
-
-# Campos importantes da busca de auditorias:
-
-# - Tipo de auditoria.
-# - Data realizada.
-# - Prefixo da aeronave.
-# - Nome do relatorio.
-# - Nao conformidades anteriores de manutencao.
-# - Nao conformidades anteriores operacionais.
-# - ID da auditoria.
-# - ATA, quando houver nao conformidade.
-
-
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor

@@ -6,14 +6,20 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
+from importlib import import_module
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fetches.fetch_audits import DEFAULT_RAW_DIR, FetchAudits
-from transforms.transform_audits import PROCESSED_DIR, run_transform
+fetch_audits = import_module("fetches.fetch_audits")
+transform_audits = import_module("transforms.transform_audits")
+
+DEFAULT_RAW_DIR = fetch_audits.DEFAULT_RAW_DIR
+FetchAudits = fetch_audits.FetchAudits
+PROCESSED_DIR = transform_audits.PROCESSED_DIR
+run_transform = transform_audits.run_transform
 
 
 LOCK_STALE_AFTER_SECONDS = 2 * 60 * 60
@@ -198,7 +204,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fetch RINAACC data and build processed dashboard datasets."
     )
-    parser.add_argument("--initial-date", help="Initial audit date in YYYY-MM-DD format.")
+    parser.add_argument(
+        "--initial-date", help="Initial audit date in YYYY-MM-DD format."
+    )
     parser.add_argument("--final-date", help="Final audit date in YYYY-MM-DD format.")
     parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR))
     parser.add_argument("--processed-dir", default=str(PROCESSED_DIR))
