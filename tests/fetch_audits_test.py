@@ -8,6 +8,8 @@ from fetches.fetch_audits import (
     REPORTS_FILE,
     FetchAudits,
     REQUEST_TIMEOUT,
+    clean_api_url,
+    clean_env_value,
 )
 
 
@@ -46,6 +48,13 @@ def test_env_variables():
     assert FetchAudits.USERNAME is not None
     assert FetchAudits.PASSWORD is not None
     assert FetchAudits.URL is not None
+
+
+def test_clean_env_value_strips_render_quotes_and_spaces():
+    assert clean_env_value('"https://api.rinaacc.com.br"') == "https://api.rinaacc.com.br"
+    assert clean_env_value(" 'secret' ") == "secret"
+    assert clean_env_value(None) is None
+    assert clean_api_url('"https://api.rinaacc.com.br/"') == "https://api.rinaacc.com.br"
 
 
 def test_setters_and_initial_login_status():

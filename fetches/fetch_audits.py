@@ -34,10 +34,29 @@ AIRCRAFT_REPORTS_FILE = "aircraft_reports.json"
 METADATA_FILE = "fetch_metadata.json"
 
 
+def clean_env_value(value):
+    if value is None:
+        return None
+
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1].strip()
+
+    return value
+
+
+def clean_api_url(value):
+    value = clean_env_value(value)
+    if not value:
+        return value
+
+    return value.rstrip("/")
+
+
 class FetchAudits:
-    USERNAME = os.getenv("USERNAME")
-    PASSWORD = os.getenv("PASSWORD")
-    URL = os.getenv("API_URL")
+    USERNAME = clean_env_value(os.getenv("USERNAME"))
+    PASSWORD = clean_env_value(os.getenv("PASSWORD"))
+    URL = clean_api_url(os.getenv("API_URL"))
     BASES = [
         "AJU",
         "BEL",
