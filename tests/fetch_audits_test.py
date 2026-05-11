@@ -7,6 +7,7 @@ from fetches.fetch_audits import (
     METADATA_FILE,
     NONCONFORMITIES_CURRENT_FILE,
     REPORTS_FILE,
+    REQUEST_RETRIES,
     REQUEST_TIMEOUT,
     FetchAudits,
     clean_api_url,
@@ -38,11 +39,17 @@ class FakeSession:
 
     def post(self, url, **kwargs):
         self.posts.append((url, kwargs))
-        return self.post_responses.pop(0)
+        response = self.post_responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
     def request(self, method, url, **kwargs):
         self.requests.append((method, url, kwargs))
-        return self.request_responses.pop(0)
+        response = self.request_responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def test_env_variables():
@@ -144,6 +151,25 @@ def test_request_with_auth_logs_in_and_retries_once_after_unauthorized(monkeypat
             {"headers": {"Authorization": "token-2"}, "timeout": REQUEST_TIMEOUT},
         ),
     ]
+
+
+def test_request_with_auth_retries_transient_server_errors(monkeypatch):
+    session = FakeSession(
+        request_responses=[
+            FakeResponse({"message": "temporarily unavailable"}, status_code=503),
+            FakeResponse({"ok": True}),
+        ]
+    )
+    fetch_audits = FetchAudits()
+    fetch_audits._FetchAudits__token = "token-1"
+
+    monkeypatch.setattr(fetch_audits, "get_session", lambda: session)
+    monkeypatch.setattr(fetch_audits, "sleep_before_retry", lambda attempt: None)
+
+    response = fetch_audits.request_with_auth("GET", "/resource")
+
+    assert response.json() == {"ok": True}
+    assert len(session.requests) == 2
 
 
 def test_save_load_response_and_save_reports_write_json(tmp_path):
@@ -258,7 +284,7 @@ def test_fetch_audits_builds_payload_saves_response_and_returns_list(
     assert captured["method"] == "POST"
     assert captured["path"] == "/search"
     assert captured["json"]["aircraftPrefix"] == ["PR-AAA", "PR-BBB"]
-    assert captured["json"]["initialDateDoc"] == "2026-01-01"
+    assert captured["json"]["initialDateDoc"] == "2025-01-01"
     assert fetch_audits.load_json(AUDITS_FILE) == audits
 
 
@@ -330,6 +356,8 @@ def test_build_metadata_describes_saved_outputs(tmp_path):
     assert metadata["audits_count"] == 1
     assert metadata["reports_count"] == 2
     assert metadata["aircraft_reports_count"] == 1
+    assert metadata["request_timeout"] == REQUEST_TIMEOUT
+    assert metadata["request_retries"] == REQUEST_RETRIES
     assert metadata["audits_file"].endswith(AUDITS_FILE)
     assert metadata["reports_file"].endswith(REPORTS_FILE)
     assert metadata["aircraft_reports_file"].endswith(AIRCRAFT_REPORTS_FILE)
@@ -375,20 +403,6 @@ def test_fetch_all_nonconformities_current_fetches_each_area_and_saves(
             "items": [],
         },
         {
-            "audit_id": "audit-1",
-            "area": "operacional",
-            "period": "previous",
-            "total": 0,
-            "items": [],
-        },
-        {
-            "audit_id": "audit-1",
-            "area": "manutencao",
-            "period": "previous",
-            "total": 1,
-            "items": [],
-        },
-        {
             "audit_id": "audit-2",
             "area": "operacional",
             "period": "current",
@@ -399,20 +413,6 @@ def test_fetch_all_nonconformities_current_fetches_each_area_and_saves(
             "audit_id": "audit-2",
             "area": "manutencao",
             "period": "current",
-            "total": 1,
-            "items": [],
-        },
-        {
-            "audit_id": "audit-2",
-            "area": "operacional",
-            "period": "previous",
-            "total": 0,
-            "items": [],
-        },
-        {
-            "audit_id": "audit-2",
-            "area": "manutencao",
-            "period": "previous",
             "total": 1,
             "items": [],
         },
