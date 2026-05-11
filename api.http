@@ -46,7 +46,7 @@ Authorization: {{token}}
 
 ###
 
-@audit_id = 69ff143e368f6d001d66a5cb
+@audit_id = 69fe3ace368f6d001d668785
 
 ###
 
@@ -82,5 +82,25 @@ Authorization: {{token}}
 GET https://api.rinaacc.com.br/aircraftReport/{{aircraftReport}} HTTP/1.1
 Authorization: {{token}}
 
+
+###
+
+GET https://api.rinaacc.com.br/nonconformityOprReportListCurrent/{{audit_id}} HTTP/1.1
+Authorization: {{token}}
+
+###
+
+GET https://api.rinaacc.com.br/nonconformityMntReportListCurrent/{{audit_id}} HTTP/1.1
+Authorization: {{token}}
+
+###
+
+GET https://api.rinaacc.com.br/nonconformityMntReportListPrevious/{{audit_id}} HTTP/1.1
+Authorization: {{token}}
+
+###
+
+GET https://api.rinaacc.com.br/nonconformityOprReportListPrevious/{{audit_id}} HTTP/1.1
+Authorization: {{token}}
 
 ###

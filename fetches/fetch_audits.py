@@ -17,6 +17,7 @@ AUDITS_FILE = "audits.json"
 REPORTS_FILE = "audit_reports.json"
 AIRCRAFT_REPORTS_FILE = "aircraft_reports.json"
 METADATA_FILE = "fetch_metadata.json"
+NONCONFORMITIES_CURRENT_FILE = "nonconformities_current.json"
 
 
 def clean_env_value(value):
@@ -83,6 +84,22 @@ class FetchAudits:
         "VOE",
     ]
     AUDITING_TYPES = ["ACCI", "RMNR", "ACCD", "Extra", "ACC"]
+    NONCONFORMITY_CURRENT_ROUTES = {
+        "operacional": "/nonconformityOprReportListCurrent/{audit_id}",
+        "manutencao": "/nonconformityMntReportListCurrent/{audit_id}",
+    }
+    NONCONFORMITY_CURRENT_KEYS = {
+        "operacional": "nonconformityOpr",
+        "manutencao": "nonconformityMnt",
+    }
+    NONCONFORMITY_PREVIOUS_ROUTES = {
+        "operacional": "/nonconformityOprReportListPrevious/{audit_id}",
+        "manutencao": "/nonconformityMntReportListPrevious/{audit_id}",
+    }
+    NONCONFORMITY_PREVIOUS_KEYS = {
+        "operacional": "nonconformityOpr",
+        "manutencao": "nonconformityMnt",
+    }
 
     def __init__(self, output_dir=DEFAULT_RAW_DIR):
 
@@ -485,6 +502,9 @@ class FetchAudits:
     def save_aircraft_reports(self, aircraft_reports):
         self.save_json(AIRCRAFT_REPORTS_FILE, aircraft_reports)
 
+    def save_nonconformities_current(self, nonconformities):
+        self.save_json(NONCONFORMITIES_CURRENT_FILE, nonconformities)
+
     def build_metadata(self, audits, reports, aircraft_reports=None):
         aircraft_reports = aircraft_reports or []
         return {
@@ -497,7 +517,68 @@ class FetchAudits:
             "audits_file": str(self.get_output_path(AUDITS_FILE)),
             "reports_file": str(self.get_output_path(REPORTS_FILE)),
             "aircraft_reports_file": str(self.get_output_path(AIRCRAFT_REPORTS_FILE)),
+            "nonconformities_current_file": str(
+                self.get_output_path(NONCONFORMITIES_CURRENT_FILE)
+            ),
         }
+
+    def _extract_nonconformity_items(self, response_json, key):
+        if isinstance(response_json, dict):
+            items = response_json.get(key)
+            if items is None:
+                items = response_json.get("items") or response_json.get("data") or []
+            total = response_json.get("total")
+        elif isinstance(response_json, list):
+            items = response_json
+            total = None
+        else:
+            items = []
+            total = None
+
+        if not isinstance(items, list):
+            items = []
+
+        if total is None:
+            total = len(items)
+
+        return items, total
+
+    def fetch_nonconformity(self, audit_id, area, period):
+        if period == "previous":
+            route = self.NONCONFORMITY_PREVIOUS_ROUTES[area]
+            key = self.NONCONFORMITY_PREVIOUS_KEYS[area]
+        else:
+            route = self.NONCONFORMITY_CURRENT_ROUTES[area]
+            key = self.NONCONFORMITY_CURRENT_KEYS[area]
+        response = self.request_with_auth("GET", route.format(audit_id=audit_id))
+        response_json = response.json()
+        items, total = self._extract_nonconformity_items(response_json, key)
+
+        return {
+            "audit_id": audit_id,
+            "area": area,
+            "period": period,
+            "total": total,
+            "items": items,
+        }
+
+    def _fetch_nonconformity_task(self, task):
+        audit_id, area, period = task
+        return self.fetch_nonconformity(audit_id, area, period)
+
+    def fetch_all_nonconformities_current(self, audits):
+        audit_ids = self.get_all_id_audits(audits)
+        tasks = [
+            (audit_id, area, period)
+            for audit_id in audit_ids
+            for period in ("current", "previous")
+            for area in self.NONCONFORMITY_CURRENT_ROUTES
+        ]
+        with ThreadPoolExecutor(max_workers=MAX_REPORT_WORKERS) as executor:
+            results = list(executor.map(self._fetch_nonconformity_task, tasks))
+
+        self.save_nonconformities_current(results)
+        return results
 
     def fetch_all_reports(self):
         audits = self.fetch_audits()
@@ -532,6 +613,7 @@ class FetchAudits:
 
         self.save_reports(reports)
         aircraft_reports = self.fetch_all_aircraft_reports(audits)
+        nonconformities = self.fetch_all_nonconformities_current(audits)
         metadata = self.build_metadata(audits, reports, aircraft_reports)
         self.save_json(METADATA_FILE, metadata)
 
@@ -539,5 +621,6 @@ class FetchAudits:
             "audits": audits,
             "reports": reports,
             "aircraft_reports": aircraft_reports,
+            "nonconformities": nonconformities,
             "metadata": metadata,
         }

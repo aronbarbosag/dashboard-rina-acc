@@ -19,6 +19,9 @@ from transforms.transform_audits import (
     NONCONFORMITIES_BY_BASE_FILE,
     NONCONFORMITIES_BY_MONTH_FILE,
     NONCONFORMITIES_BY_OPERATOR_FILE,
+    NONCONFORMITIES_BY_STATUS_FILE,
+    NONCONFORMITIES_BY_TITLE_FILE,
+    NONCONFORMITIES_CURRENT_RAW_FILE,
     NONCONFORMITIES_PROCESSED_FILE,
     RECURRENCE_BY_AIRCRAFT_FILE,
     RECURRENCE_BY_BASE_FILE,
@@ -151,6 +154,74 @@ def sample_aircraft_reports():
     ]
 
 
+def sample_nonconformities_current():
+    return [
+        {
+            "audit_id": "audit-1",
+            "area": "operacional",
+            "period": "current",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "manutencao",
+            "period": "current",
+            "total": 1,
+            "items": [
+                {
+                    "_id": "nc-1",
+                    "ata": "32 - LANDING GEAR",
+                    "title": "PBO acima do limite",
+                    "description": "Inspection finding",
+                    "dateSolution": None,
+                    "requirementType": "IOGP",
+                    "contractual": "REQ-1",
+                }
+            ],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "operacional",
+            "period": "previous",
+            "total": 1,
+            "items": [
+                {
+                    "_id": "nc-2",
+                    "ata": "23 - COMMUNICATIONS",
+                    "title": "Automatic Flight Folowing",
+                    "description": "Observation text",
+                    "dateSolution": None,
+                }
+            ],
+        },
+    ]
+
+
+def sample_legacy_nonconformities_current():
+    return [
+        {
+            "audit_id": "audit-1",
+            "area": "operacional",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "manutencao",
+            "total": 1,
+            "items": [
+                {
+                    "_id": "nc-1",
+                    "ata": "32 - LANDING GEAR",
+                    "title": "PBO acima do limite",
+                    "description": "Inspection finding",
+                }
+            ],
+        },
+    ]
+
+
 def test_count_items_handles_lists_scalar_and_empty_values():
     assert count_items([1, 2]) == 2
     assert count_items("item-id") == 1
@@ -194,7 +265,10 @@ def test_get_active_aircraft_configuration_returns_status_true_configuration():
 
 def test_build_audits_dataframe_prefers_reports_and_creates_dashboard_columns():
     dataframe = build_audits_dataframe(
-        sample_audits(), sample_reports(), sample_aircraft_reports()
+        sample_audits(),
+        sample_reports(),
+        sample_aircraft_reports(),
+        sample_nonconformities_current(),
     )
 
     assert len(dataframe) == 2
@@ -214,6 +288,20 @@ def test_build_audits_dataframe_prefers_reports_and_creates_dashboard_columns():
     assert pd.api.types.is_datetime64_any_dtype(dataframe["date"])
 
 
+def test_build_audits_dataframe_falls_back_to_report_previous_when_payload_is_legacy():
+    dataframe = build_audits_dataframe(
+        sample_audits(),
+        sample_reports(),
+        sample_aircraft_reports(),
+        sample_legacy_nonconformities_current(),
+    )
+
+    assert dataframe.loc[0, "nonconformity_total"] == 1
+    assert dataframe.loc[0, "previous_nonconformity_total"] == 1
+    assert dataframe.loc[0, "nonconformity_opr_previous_count"] == 1
+    assert dataframe.loc[0, "nonconformity_mnt_previous_count"] == 0
+
+
 def test_build_audits_dataframe_falls_back_to_search_audits_when_reports_are_empty():
     dataframe = build_audits_dataframe(sample_audits(), reports=[])
 
@@ -223,27 +311,36 @@ def test_build_audits_dataframe_falls_back_to_search_audits_when_reports_are_emp
 
 
 def test_build_nonconformities_dataframe_enriches_rows_with_report_context():
-    dataframe = build_nonconformities_dataframe(sample_audits(), sample_reports())
+    dataframe = build_nonconformities_dataframe(
+        sample_audits(), sample_reports(), sample_nonconformities_current()
+    )
 
-    assert len(dataframe) == 1
-    assert set(dataframe["area"]) == {"manutencao"}
-    assert set(dataframe["period"]) == {"current"}
+    assert len(dataframe) == 2
+    assert set(dataframe["area"]) == {"manutencao", "operacional"}
+    assert set(dataframe["period"]) == {"current", "previous"}
     assert (
         bool(dataframe.loc[dataframe["item_id"] == "nc-1", "is_resolved"].iloc[0])
-        is True
+        is False
     )
     assert (
         dataframe.loc[dataframe["item_id"] == "nc-1", "operator_abbreviation"].iloc[0]
         == "OMNI"
     )
+    assert (
+        dataframe.loc[dataframe["item_id"] == "nc-1", "requirement_type"].iloc[0]
+        == "IOGP"
+    )
 
 
 def test_build_kpis_calculates_main_dashboard_numbers():
     audits_dataframe = build_audits_dataframe(
-        sample_audits(), sample_reports(), sample_aircraft_reports()
+        sample_audits(),
+        sample_reports(),
+        sample_aircraft_reports(),
+        sample_nonconformities_current(),
     )
     nonconformities_dataframe = build_nonconformities_dataframe(
-        sample_audits(), sample_reports()
+        sample_audits(), sample_reports(), sample_nonconformities_current()
     )
 
     kpis = build_kpis(audits_dataframe, nonconformities_dataframe)
@@ -254,8 +351,8 @@ def test_build_kpis_calculates_main_dashboard_numbers():
         "nonconformities_per_audit": 0.5,
         "audits_with_nonconformity": 1,
         "percent_audits_with_nonconformity": 50.0,
-        "open_nonconformities": 0,
-        "resolved_nonconformities": 1,
+        "open_nonconformities": 1,
+        "resolved_nonconformities": 0,
         "audited_bases": 2,
         "audited_aircraft": 2,
     }
@@ -263,10 +360,13 @@ def test_build_kpis_calculates_main_dashboard_numbers():
 
 def test_build_analysis_tables_creates_chart_ready_outputs():
     audits_dataframe = build_audits_dataframe(
-        sample_audits(), sample_reports(), sample_aircraft_reports()
+        sample_audits(),
+        sample_reports(),
+        sample_aircraft_reports(),
+        sample_nonconformities_current(),
     )
     nonconformities_dataframe = build_nonconformities_dataframe(
-        sample_audits(), sample_reports()
+        sample_audits(), sample_reports(), sample_nonconformities_current()
     )
 
     tables = build_analysis_tables(audits_dataframe, nonconformities_dataframe)
@@ -276,14 +376,14 @@ def test_build_analysis_tables_creates_chart_ready_outputs():
         {"audit_month": "2026-02", "audits_count": 1},
     ]
     assert tables["nonconformities_by_month"].to_dict("records") == [
-        {"audit_month": "2026-01", "nonconformities_count": 1}
+        {"audit_month": "2026-01", "nonconformities_count": 2}
     ]
     assert tables["monthly_nonconformity_rate"].to_dict("records") == [
         {
             "audit_month": "2026-01",
             "audits_count": 1,
-            "nonconformities_count": 1,
-            "nonconformities_per_audit": 1.0,
+            "nonconformities_count": 2,
+            "nonconformities_per_audit": 2.0,
         },
         {
             "audit_month": "2026-02",
@@ -293,11 +393,19 @@ def test_build_analysis_tables_creates_chart_ready_outputs():
         },
     ]
     assert set(tables["audits_by_type"]["auditing_type"]) == {"ACC", "ACCD"}
-    assert tables["nonconformities_by_operator"].iloc[0]["nonconformities_count"] == 1
+    assert tables["nonconformities_by_operator"].iloc[0]["nonconformities_count"] == 2
     assert tables["nonconformities_by_area"].to_dict("records") == [
-        {"area": "manutencao", "nonconformities_count": 1}
+        {"area": "manutencao", "nonconformities_count": 1},
+        {"area": "operacional", "nonconformities_count": 1},
     ]
     assert tables["nonconformities_by_base"].iloc[0]["base_abbreviation"] == "MEA"
+    assert tables["nonconformities_by_status"].to_dict("records") == [
+        {"status_label": "Aberta", "nonconformities_count": 2}
+    ]
+    assert tables["nonconformities_by_title"].to_dict("records") == [
+        {"title": "AFF", "nonconformities_count": 1},
+        {"title": "PBO", "nonconformities_count": 1},
+    ]
     assert tables["aircraft_ranking"].iloc[0]["aircraft_prefix"] == "PR-AAA"
     assert tables["aircraft_backup_summary"].to_dict("records") == [
         {"aircraft_backup_label": "Backup", "audits_count": 1},
@@ -309,6 +417,11 @@ def test_build_analysis_tables_creates_chart_ready_outputs():
         {"aircraft_configuration": "SAR", "audits_count": 1},
     ]
     assert tables["ata_ranking"].to_dict("records") == [
+        {
+            "ata": "23 - COMMUNICATIONS",
+            "nonconformities_count": 1,
+            "audits_count": 1,
+        },
         {
             "ata": "32 - LANDING GEAR",
             "nonconformities_count": 1,
@@ -351,11 +464,14 @@ def test_run_transform_reads_raw_json_and_writes_processed_files(tmp_path):
     (raw_dir / AIRCRAFT_REPORTS_RAW_FILE).write_text(
         json.dumps(sample_aircraft_reports())
     )
+    (raw_dir / NONCONFORMITIES_CURRENT_RAW_FILE).write_text(
+        json.dumps(sample_nonconformities_current())
+    )
 
     result = run_transform(raw_dir=raw_dir, processed_dir=processed_dir)
 
     assert len(result["audits"]) == 2
-    assert len(result["non_conformities"]) == 1
+    assert len(result["non_conformities"]) == 2
     assert result["kpis"]["total_audits"] == 2
     assert (processed_dir / AUDITS_PROCESSED_FILE).exists()
     assert (processed_dir / NONCONFORMITIES_PROCESSED_FILE).exists()
@@ -367,6 +483,8 @@ def test_run_transform_reads_raw_json_and_writes_processed_files(tmp_path):
     assert (processed_dir / NONCONFORMITIES_BY_OPERATOR_FILE).exists()
     assert (processed_dir / NONCONFORMITIES_BY_AREA_FILE).exists()
     assert (processed_dir / NONCONFORMITIES_BY_BASE_FILE).exists()
+    assert (processed_dir / NONCONFORMITIES_BY_STATUS_FILE).exists()
+    assert (processed_dir / NONCONFORMITIES_BY_TITLE_FILE).exists()
     assert (processed_dir / AIRCRAFT_RANKING_FILE).exists()
     assert (processed_dir / AIRCRAFT_BACKUP_SUMMARY_FILE).exists()
     assert (processed_dir / AIRCRAFT_CONFIGURATION_SUMMARY_FILE).exists()

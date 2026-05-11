@@ -5,9 +5,10 @@ from fetches.fetch_audits import (
     AIRCRAFT_REPORTS_FILE,
     AUDITS_FILE,
     METADATA_FILE,
+    NONCONFORMITIES_CURRENT_FILE,
     REPORTS_FILE,
-    FetchAudits,
     REQUEST_TIMEOUT,
+    FetchAudits,
     clean_api_url,
     clean_env_value,
 )
@@ -332,6 +333,91 @@ def test_build_metadata_describes_saved_outputs(tmp_path):
     assert metadata["audits_file"].endswith(AUDITS_FILE)
     assert metadata["reports_file"].endswith(REPORTS_FILE)
     assert metadata["aircraft_reports_file"].endswith(AIRCRAFT_REPORTS_FILE)
+    assert metadata["nonconformities_current_file"].endswith(
+        NONCONFORMITIES_CURRENT_FILE
+    )
+
+
+def test_fetch_all_nonconformities_current_fetches_each_area_and_saves(
+    tmp_path, monkeypatch
+):
+    fetch_audits = FetchAudits(output_dir=tmp_path / "raw")
+
+    monkeypatch.setattr(
+        fetch_audits,
+        "fetch_nonconformity",
+        lambda audit_id, area, period: {
+            "audit_id": audit_id,
+            "area": area,
+            "period": period,
+            "total": 1 if area == "manutencao" else 0,
+            "items": [],
+        },
+    )
+
+    results = fetch_audits.fetch_all_nonconformities_current(
+        [{"_id": "audit-1"}, {"_id": "audit-2"}]
+    )
+
+    assert results == [
+        {
+            "audit_id": "audit-1",
+            "area": "operacional",
+            "period": "current",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "manutencao",
+            "period": "current",
+            "total": 1,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "operacional",
+            "period": "previous",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "manutencao",
+            "period": "previous",
+            "total": 1,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "operacional",
+            "period": "current",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "manutencao",
+            "period": "current",
+            "total": 1,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "operacional",
+            "period": "previous",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "manutencao",
+            "period": "previous",
+            "total": 1,
+            "items": [],
+        },
+    ]
+    assert fetch_audits.load_json(NONCONFORMITIES_CURRENT_FILE) == results
 
 
 def test_fetch_all_reports_fetches_each_audit_report_and_saves(tmp_path, monkeypatch):
@@ -409,6 +495,11 @@ def test_run_fetches_filtered_audits_reports_and_metadata(tmp_path, monkeypatch)
         "fetch_aircraft_report_by_id",
         lambda audit_id: {"_id": f"aircraft-report-{audit_id}", "backup": False},
     )
+    monkeypatch.setattr(
+        fetch_audits,
+        "fetch_all_nonconformities_current",
+        lambda audits: save_and_return_nonconformities(fetch_audits),
+    )
 
     result = fetch_audits.run()
 
@@ -427,8 +518,76 @@ def test_run_fetches_filtered_audits_reports_and_metadata(tmp_path, monkeypatch)
         {"_id": "aircraft-report-audit-1", "backup": False, "audit_id": "audit-1"},
         {"_id": "aircraft-report-audit-2", "backup": False, "audit_id": "audit-2"},
     ]
+    assert len(result["nonconformities"]) == 8
     assert result["metadata"]["initial_date"] == "2026-04-01"
     assert result["metadata"]["final_date"] == "2026-04-30"
     assert fetch_audits.load_json(REPORTS_FILE) == result["reports"]
     assert fetch_audits.load_json(AIRCRAFT_REPORTS_FILE) == result["aircraft_reports"]
+    assert (
+        fetch_audits.load_json(NONCONFORMITIES_CURRENT_FILE)
+        == result["nonconformities"]
+    )
     assert fetch_audits.load_json(METADATA_FILE) == result["metadata"]
+
+
+def save_and_return_nonconformities(fetch_audits):
+    results = [
+        {
+            "audit_id": "audit-1",
+            "area": "operacional",
+            "period": "current",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "manutencao",
+            "period": "current",
+            "total": 1,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "operacional",
+            "period": "previous",
+            "total": 1,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-1",
+            "area": "manutencao",
+            "period": "previous",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "operacional",
+            "period": "current",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "manutencao",
+            "period": "current",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "operacional",
+            "period": "previous",
+            "total": 0,
+            "items": [],
+        },
+        {
+            "audit_id": "audit-2",
+            "area": "manutencao",
+            "period": "previous",
+            "total": 0,
+            "items": [],
+        },
+    ]
+    fetch_audits.save_nonconformities_current(results)
+    return results

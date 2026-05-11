@@ -526,6 +526,15 @@ def format_decimal(value):
     return f"{value:.2f}".replace(".", ",")
 
 
+def truncate_label(value, max_length=48):
+    if not isinstance(value, str):
+        return value
+    value = value.strip()
+    if len(value) <= max_length:
+        return value
+    return f"{value[: max_length - 3].rstrip()}..."
+
+
 def add_month_label(dataframe):
     dataframe = dataframe.copy()
     if dataframe.empty or "audit_month" not in dataframe.columns:
@@ -802,6 +811,38 @@ def ensure_dashboard_analysis_tables(tables, audits, nonconformities):
         "nonconformities_by_area",
         count_dashboard_rows(nonconformities, ["area"], "nonconformities_count"),
     )
+    if "nonconformities_by_status" not in tables:
+        if not nonconformities.empty:
+            status_source = nonconformities.copy()
+            if "is_resolved" not in status_source.columns:
+                status_source["is_resolved"] = status_source["resolution_date"].notna()
+            status_source["status_label"] = status_source["is_resolved"].map(
+                lambda value: "Resolvida" if bool(value) else "Aberta"
+            )
+            tables["nonconformities_by_status"] = count_dashboard_rows(
+                status_source,
+                ["status_label"],
+                "nonconformities_count",
+            )
+        else:
+            tables["nonconformities_by_status"] = pd.DataFrame(
+                columns=["status_label", "nonconformities_count"]
+            )
+    if "nonconformities_by_title" not in tables:
+        if not nonconformities.empty:
+            title_source = nonconformities.copy()
+            if "title" not in title_source.columns:
+                title_source["title"] = "Sem titulo"
+            title_source["title"] = title_source["title"].fillna("Sem titulo")
+            tables["nonconformities_by_title"] = count_dashboard_rows(
+                title_source,
+                ["title"],
+                "nonconformities_count",
+            )
+        else:
+            tables["nonconformities_by_title"] = pd.DataFrame(
+                columns=["title", "nonconformities_count"]
+            )
     tables.setdefault(
         "recurrence_by_aircraft",
         build_dashboard_recurrence_table(audits, ["aircraft_prefix"]),
@@ -933,6 +974,9 @@ def main():
         tables,
         filtered_audits,
         filtered_nonconformities,
+    )
+    has_previous_nonconformities = (
+        filtered_audits["previous_nonconformity_total"].sum() > 0
     )
     metric_columns = st.columns(6)
     with metric_columns[0]:
@@ -1089,6 +1133,37 @@ def main():
     col_left, col_right = st.columns(2)
     with col_left:
         render_chart(
+            "Nao conformidades resolvidas",
+            "Comparativo entre nao conformidades abertas e resolvidas.",
+            make_horizontal_bar(
+                tables["nonconformities_by_status"],
+                "status_label:N",
+                "nonconformities_count:Q",
+                ["status_label", "nonconformities_count"],
+                color=CHART_PURPLE,
+            ),
+        )
+    with col_right:
+        title_chart_source = tables["nonconformities_by_title"].head(12).copy()
+        if not title_chart_source.empty:
+            title_chart_source["title_short"] = title_chart_source["title"].apply(
+                truncate_label
+            )
+        render_chart(
+            "Titulos mais frequentes",
+            "Nao conformidades mais recorrentes por titulo.",
+            make_horizontal_bar(
+                title_chart_source,
+                "title_short:N",
+                "nonconformities_count:Q",
+                ["title", "nonconformities_count"],
+                color=CHART_RED,
+            ),
+        )
+
+    col_left, col_right = st.columns(2)
+    with col_left:
+        render_chart(
             "Nao conformidades por base",
             "Concentracao de registros por base operacional.",
             make_horizontal_bar(
@@ -1126,23 +1201,26 @@ def main():
             ),
         )
     with col_right:
-        render_chart(
-            "Recorrencia por aeronave",
-            "Aeronaves com NC anterior e NC atual no periodo filtrado.",
-            make_horizontal_bar(
-                tables["recurrence_by_aircraft"].head(12),
-                "aircraft_prefix:N",
-                "recurrent_audits:Q",
-                [
-                    "aircraft_prefix",
-                    "recurrent_audits",
-                    "current_nonconformities_count",
-                    "previous_nonconformities_count",
-                    "recurrence_rate",
-                ],
-                color=CHART_PURPLE,
-            ),
-        )
+        if has_previous_nonconformities:
+            render_chart(
+                "Recorrencia por aeronave",
+                "Aeronaves com NC anterior e NC atual no periodo filtrado.",
+                make_horizontal_bar(
+                    tables["recurrence_by_aircraft"].head(12),
+                    "aircraft_prefix:N",
+                    "recurrent_audits:Q",
+                    [
+                        "aircraft_prefix",
+                        "recurrent_audits",
+                        "current_nonconformities_count",
+                        "previous_nonconformities_count",
+                        "recurrence_rate",
+                    ],
+                    color=CHART_PURPLE,
+                ),
+            )
+        else:
+            st.info("Sem dados de nao conformidades anteriores no periodo filtrado.")
 
     col_left, col_right = st.columns(2)
     with col_left:
@@ -1176,49 +1254,55 @@ def main():
         '<div class="section-title">Analise de recorrencia</div>',
         unsafe_allow_html=True,
     )
-    st.markdown(
-        (
-            '<div class="section-caption">'
-            "Recorrencia considera auditorias que possuem nao conformidades anteriores "
-            "e tambem nao conformidades atuais dentro do mesmo agrupamento."
-            "</div>"
-        ),
-        unsafe_allow_html=True,
-    )
-    recurrence_columns = [
-        "audits_count",
-        "current_nonconformities_count",
-        "previous_nonconformities_count",
-        "audits_with_current_nonconformity",
-        "audits_with_previous_nonconformity",
-        "recurrent_audits",
-        "recurrence_rate",
-    ]
-    recurrence_tabs = st.tabs(["Aeronaves", "Bases", "Operadoras"])
-    with recurrence_tabs[0]:
-        st.dataframe(
-            tables["recurrence_by_aircraft"][
-                ["aircraft_prefix", *recurrence_columns]
-            ].head(25),
-            width="stretch",
-            hide_index=True,
+    if not has_previous_nonconformities:
+        st.info(
+            "Sem dados de nao conformidades anteriores no periodo filtrado. "
+            "Os indicadores de recorrencia permanecem zerados."
         )
-    with recurrence_tabs[1]:
-        st.dataframe(
-            tables["recurrence_by_base"][
-                ["base_abbreviation", "base", *recurrence_columns]
-            ].head(25),
-            width="stretch",
-            hide_index=True,
+    else:
+        st.markdown(
+            (
+                '<div class="section-caption">'
+                "Recorrencia considera auditorias que possuem nao conformidades anteriores "
+                "e tambem nao conformidades atuais dentro do mesmo agrupamento."
+                "</div>"
+            ),
+            unsafe_allow_html=True,
         )
-    with recurrence_tabs[2]:
-        st.dataframe(
-            tables["recurrence_by_operator"][
-                ["operator_abbreviation", "operator", *recurrence_columns]
-            ].head(25),
-            width="stretch",
-            hide_index=True,
-        )
+        recurrence_columns = [
+            "audits_count",
+            "current_nonconformities_count",
+            "previous_nonconformities_count",
+            "audits_with_current_nonconformity",
+            "audits_with_previous_nonconformity",
+            "recurrent_audits",
+            "recurrence_rate",
+        ]
+        recurrence_tabs = st.tabs(["Aeronaves", "Bases", "Operadoras"])
+        with recurrence_tabs[0]:
+            st.dataframe(
+                tables["recurrence_by_aircraft"][
+                    ["aircraft_prefix", *recurrence_columns]
+                ].head(25),
+                width="stretch",
+                hide_index=True,
+            )
+        with recurrence_tabs[1]:
+            st.dataframe(
+                tables["recurrence_by_base"][
+                    ["base_abbreviation", "base", *recurrence_columns]
+                ].head(25),
+                width="stretch",
+                hide_index=True,
+            )
+        with recurrence_tabs[2]:
+            st.dataframe(
+                tables["recurrence_by_operator"][
+                    ["operator_abbreviation", "operator", *recurrence_columns]
+                ].head(25),
+                width="stretch",
+                hide_index=True,
+            )
 
     st.divider()
     table_columns = [
@@ -1258,8 +1342,12 @@ def main():
         '<div class="section-caption">Registros detalhados por ATA, area e auditoria.</div>',
         unsafe_allow_html=True,
     )
+    for column in ["title", "requirement_type", "contractual"]:
+        if column not in filtered_nonconformities.columns:
+            filtered_nonconformities[column] = ""
     nonconformity_columns = [
         "date",
+        "title",
         "ata",
         "area",
         "period",
@@ -1267,6 +1355,10 @@ def main():
         "operator_abbreviation",
         "base_abbreviation",
         "auditing_type",
+        "requirement_type",
+        "contractual",
+        "is_resolved",
+        "resolution_date",
         "report_name",
         "audit_id",
     ]
