@@ -30,6 +30,7 @@ FETCH_METADATA_FILE = RAW_DIR / "fetch_metadata.json"
 LOGO_PATH = PROJECT_ROOT / "assets" / "logo-rina.png"
 FAVICON_PATH = PROJECT_ROOT / "assets" / "favicon.png"
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+DEFAULT_FETCH_START_DATE = datetime(2025, 1, 1).date()
 MONTH_LABELS = {
     "01": "Jan",
     "02": "Fev",
@@ -887,11 +888,11 @@ def run_update_from_sidebar(audits):
         )
 
     if audits.empty:
-        default_start = datetime.now().date()
+        default_start = DEFAULT_FETCH_START_DATE
         default_end = datetime.now().date()
     else:
-        default_start = audits["date"].min().date()
-        default_end = audits["date"].max().date()
+        default_start = min(audits["date"].min().date(), DEFAULT_FETCH_START_DATE)
+        default_end = max(audits["date"].max().date(), datetime.now().date())
 
     update_start = st.sidebar.date_input(
         "Inicio da coleta",

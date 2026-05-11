@@ -4,14 +4,26 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import local
+from time import perf_counter, sleep
 
 import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-REQUEST_TIMEOUT = 30
-MAX_REPORT_WORKERS = 8
+
+def get_int_env(name, default):
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+REQUEST_TIMEOUT = max(5, get_int_env("REQUEST_TIMEOUT", 30))
+REQUEST_RETRIES = max(0, get_int_env("REQUEST_RETRIES", 2))
+RETRY_BACKOFF_SECONDS = 0.5
+RETRY_STATUS_CODES = {429, 502, 503, 504}
+MAX_REPORT_WORKERS = max(1, get_int_env("MAX_REPORT_WORKERS", 16))
 DEFAULT_RAW_DIR = Path("data/raw")
 AUDITS_FILE = "audits.json"
 REPORTS_FILE = "audit_reports.json"
@@ -106,11 +118,12 @@ class FetchAudits:
         self.output_dir = Path(output_dir)
         self.__token = None
         self.__login_status = False
-        self.initial_date = "2026-01-01"
+        self.initial_date = "2025-01-01"
         self.final_date = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
         self.audit_id = None
         self._aircraft_prefixes = None
         self._thread_local = local()
+        self._timings = {}
 
     def set_initial_date(self, initial_date):
         self.initial_date = initial_date
@@ -150,11 +163,7 @@ class FetchAudits:
             "login": FetchAudits.USERNAME,
             "password": FetchAudits.PASSWORD,
         }
-        response = self.get_session().post(
-            f"{FetchAudits.URL}/login",
-            json=data,
-            timeout=REQUEST_TIMEOUT,
-        )
+        response = self.post_with_retries(f"{FetchAudits.URL}/login", json=data)
         response.raise_for_status()
 
         token = response.json().get("token")
@@ -170,27 +179,80 @@ class FetchAudits:
 
         return self._thread_local.session
 
+    def should_retry_response(self, response):
+        return response.status_code in RETRY_STATUS_CODES
+
+    def sleep_before_retry(self, attempt):
+        sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+    def post_with_retries(self, url, **kwargs):
+        last_error = None
+        session = self.get_session()
+
+        for attempt in range(1, REQUEST_RETRIES + 2):
+            try:
+                response = session.post(url, timeout=REQUEST_TIMEOUT, **kwargs)
+            except (requests.Timeout, requests.ConnectionError) as error:
+                last_error = error
+            else:
+                if not self.should_retry_response(response):
+                    return response
+
+                last_error = requests.HTTPError(f"HTTP {response.status_code}")
+
+            if attempt <= REQUEST_RETRIES:
+                self.sleep_before_retry(attempt)
+
+        if last_error:
+            raise last_error
+
+        raise requests.RequestException("Request failed without a response.")
+
+    def request_with_retries(self, method, path, **kwargs):
+        last_error = None
+        session = self.get_session()
+
+        for attempt in range(1, REQUEST_RETRIES + 2):
+            try:
+                response = session.request(
+                    method,
+                    f"{FetchAudits.URL}{path}",
+                    timeout=REQUEST_TIMEOUT,
+                    **kwargs,
+                )
+            except (requests.Timeout, requests.ConnectionError) as error:
+                last_error = error
+            else:
+                if not self.should_retry_response(response):
+                    return response
+
+                last_error = requests.HTTPError(f"HTTP {response.status_code}")
+
+            if attempt <= REQUEST_RETRIES:
+                self.sleep_before_retry(attempt)
+
+        if last_error:
+            raise last_error
+
+        raise requests.RequestException("Request failed without a response.")
+
     def request_with_auth(self, method, path, **kwargs):
         if self.get_token() is None:
             self.login()
 
-        session = self.get_session()
-
-        response = session.request(
+        response = self.request_with_retries(
             method,
-            f"{FetchAudits.URL}{path}",
+            path,
             headers={"Authorization": f"{self.get_token()}"},
-            timeout=REQUEST_TIMEOUT,
             **kwargs,
         )
 
         if response.status_code == 401:
             self.login()
-            response = session.request(
+            response = self.request_with_retries(
                 method,
-                f"{FetchAudits.URL}{path}",
+                path,
                 headers={"Authorization": f"{self.get_token()}"},
-                timeout=REQUEST_TIMEOUT,
                 **kwargs,
             )
 
@@ -505,15 +567,22 @@ class FetchAudits:
     def save_nonconformities_current(self, nonconformities):
         self.save_json(NONCONFORMITIES_CURRENT_FILE, nonconformities)
 
-    def build_metadata(self, audits, reports, aircraft_reports=None):
+    def build_metadata(self, audits, reports, aircraft_reports=None, timings=None):
         aircraft_reports = aircraft_reports or []
+        timings = timings or {}
+        audits_count = len(audits)
         return {
             "fetched_at": datetime.now(tz=timezone.utc).isoformat(),
             "initial_date": self.initial_date,
             "final_date": self.final_date,
-            "audits_count": len(audits),
+            "audits_count": audits_count,
             "reports_count": len(reports),
             "aircraft_reports_count": len(aircraft_reports),
+            "estimated_request_count": 2 + (audits_count * 4),
+            "max_report_workers": MAX_REPORT_WORKERS,
+            "request_timeout": REQUEST_TIMEOUT,
+            "request_retries": REQUEST_RETRIES,
+            "timings_seconds": timings,
             "audits_file": str(self.get_output_path(AUDITS_FILE)),
             "reports_file": str(self.get_output_path(REPORTS_FILE)),
             "aircraft_reports_file": str(self.get_output_path(AIRCRAFT_REPORTS_FILE)),
@@ -569,9 +638,8 @@ class FetchAudits:
     def fetch_all_nonconformities_current(self, audits):
         audit_ids = self.get_all_id_audits(audits)
         tasks = [
-            (audit_id, area, period)
+            (audit_id, area, "current")
             for audit_id in audit_ids
-            for period in ("current", "previous")
             for area in self.NONCONFORMITY_CURRENT_ROUTES
         ]
         with ThreadPoolExecutor(max_workers=MAX_REPORT_WORKERS) as executor:
@@ -606,15 +674,40 @@ class FetchAudits:
         return aircraft_reports
 
     def run(self):
+        total_started_at = perf_counter()
+        timings = {}
+
+        phase_started_at = perf_counter()
         audits = self.fetch_audits()
+        timings["search"] = round(perf_counter() - phase_started_at, 3)
+
         audit_ids = self.get_all_id_audits(audits)
+        phase_started_at = perf_counter()
         with ThreadPoolExecutor(max_workers=MAX_REPORT_WORKERS) as executor:
             reports = list(executor.map(self.fetch_audit_by_id, audit_ids))
+        timings["reports"] = round(perf_counter() - phase_started_at, 3)
 
+        phase_started_at = perf_counter()
         self.save_reports(reports)
+        timings["save_reports"] = round(perf_counter() - phase_started_at, 3)
+
+        phase_started_at = perf_counter()
         aircraft_reports = self.fetch_all_aircraft_reports(audits)
+        timings["aircraft_reports"] = round(perf_counter() - phase_started_at, 3)
+
+        phase_started_at = perf_counter()
         nonconformities = self.fetch_all_nonconformities_current(audits)
-        metadata = self.build_metadata(audits, reports, aircraft_reports)
+        timings["nonconformities"] = round(perf_counter() - phase_started_at, 3)
+
+        timings["total"] = round(perf_counter() - total_started_at, 3)
+        self._timings = timings
+
+        metadata = self.build_metadata(
+            audits,
+            reports,
+            aircraft_reports,
+            timings=timings,
+        )
         self.save_json(METADATA_FILE, metadata)
 
         return {
