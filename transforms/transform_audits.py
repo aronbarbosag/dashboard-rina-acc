@@ -3,13 +3,13 @@ from pathlib import Path
 
 import pandas as pd
 
-
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
 
 AUDITS_RAW_FILE = "audits.json"
 REPORTS_RAW_FILE = "audit_reports.json"
 AIRCRAFT_REPORTS_RAW_FILE = "aircraft_reports.json"
+NONCONFORMITIES_CURRENT_RAW_FILE = "nonconformities_current.json"
 
 AUDITS_PROCESSED_FILE = "audits.csv"
 NONCONFORMITIES_PROCESSED_FILE = "non_conformities.csv"
@@ -21,6 +21,8 @@ MONTHLY_NONCONFORMITY_RATE_FILE = "monthly_nonconformity_rate.csv"
 NONCONFORMITIES_BY_AREA_FILE = "nonconformities_by_area.csv"
 NONCONFORMITIES_BY_OPERATOR_FILE = "nonconformities_by_operator.csv"
 NONCONFORMITIES_BY_BASE_FILE = "nonconformities_by_base.csv"
+NONCONFORMITIES_BY_STATUS_FILE = "nonconformities_by_status.csv"
+NONCONFORMITIES_BY_TITLE_FILE = "nonconformities_by_title.csv"
 AIRCRAFT_RANKING_FILE = "aircraft_nonconformity_ranking.csv"
 AIRCRAFT_BACKUP_SUMMARY_FILE = "aircraft_backup_summary.csv"
 AIRCRAFT_CONFIGURATION_SUMMARY_FILE = "aircraft_configuration_summary.csv"
@@ -141,6 +143,42 @@ def get_active_aircraft_configuration(aircraft_report):
     return "; ".join(active_configurations)
 
 
+def build_nonconformity_summary(nonconformity_payloads):
+    summary = {}
+    for payload in nonconformity_payloads or []:
+        if not isinstance(payload, dict):
+            continue
+
+        audit_id = payload.get("audit_id")
+        area = payload.get("area")
+        period = payload.get("period") or "current"
+        total = payload.get("total")
+
+        if not audit_id or not area:
+            continue
+
+        if total is None:
+            items = (
+                payload.get("items") if isinstance(payload.get("items"), list) else []
+            )
+            total = len(items)
+
+        summary.setdefault(
+            audit_id,
+            {
+                "current": {"operacional": 0, "manutencao": 0},
+                "previous": {"operacional": 0, "manutencao": 0},
+                "_available": set(),
+            },
+        )
+        if period not in summary[audit_id]:
+            summary[audit_id][period] = {"operacional": 0, "manutencao": 0}
+        summary[audit_id][period][area] = int(total)
+        summary[audit_id]["_available"].add((period, area))
+
+    return summary
+
+
 def parse_dates(dataframe, columns):
     for column in columns:
         if column in dataframe.columns:
@@ -151,11 +189,14 @@ def parse_dates(dataframe, columns):
     return dataframe
 
 
-def build_audits_dataframe(audits, reports, aircraft_reports=None):
+def build_audits_dataframe(
+    audits, reports, aircraft_reports=None, nonconformity_payloads=None
+):
     source = reports or audits
     aircraft_reports_by_audit_id = get_aircraft_report_by_audit_id(
         aircraft_reports or []
     )
+    nonconformity_summary = build_nonconformity_summary(nonconformity_payloads)
     rows = []
 
     for item in source:
@@ -168,9 +209,28 @@ def build_audits_dataframe(audits, reports, aircraft_reports=None):
             auditing_data, "auditorType"
         )
 
-        nonconformity_counts = {
-            field: count_items(item.get(field)) for field in NONCONFORMITY_FIELDS
-        }
+        if nonconformity_payloads:
+            summary = nonconformity_summary.get(
+                audit_id,
+                {
+                    "current": {"operacional": 0, "manutencao": 0},
+                    "previous": {"operacional": 0, "manutencao": 0},
+                    "_available": set(),
+                },
+            )
+            available_payloads = summary.get("_available", set())
+            nonconformity_counts = {}
+            for field, (area, period) in NONCONFORMITY_FIELDS.items():
+                if (period, area) in available_payloads:
+                    nonconformity_counts[field] = int(
+                        summary.get(period, {}).get(area, 0)
+                    )
+                else:
+                    nonconformity_counts[field] = count_items(item.get(field))
+        else:
+            nonconformity_counts = {
+                field: count_items(item.get(field)) for field in NONCONFORMITY_FIELDS
+            }
         accompaniment_previous_count = count_items(item.get("_accompanimentPrevious"))
         accompaniment_current_count = count_items(item.get("_accompaniment"))
         photos_count = count_items(item.get("photos"))
@@ -251,6 +311,7 @@ def normalize_nonconformity_item(item):
         return {
             "item_id": item.get("_id") or item.get("id"),
             "ata": item.get("ata"),
+            "title": item.get("title"),
             "description": (
                 item.get("description")
                 or item.get("observation")
@@ -258,7 +319,13 @@ def normalize_nonconformity_item(item):
                 or item.get("title")
             ),
             "status": item.get("status"),
-            "resolution_date": item.get("resolutionDate") or item.get("resolvedAt"),
+            "resolution_date": (
+                item.get("dateSolution")
+                or item.get("resolutionDate")
+                or item.get("resolvedAt")
+            ),
+            "requirement_type": item.get("requirementType"),
+            "contractual": item.get("contractual"),
         }
 
     return {
@@ -270,44 +337,117 @@ def normalize_nonconformity_item(item):
     }
 
 
-def build_nonconformities_dataframe(audits, reports):
-    audits_by_id = {audit.get("_id"): audit for audit in audits}
-    rows = []
+def normalize_title(value):
+    if value is None:
+        return "Sem titulo"
 
-    for report in reports or audits:
-        audit = audits_by_id.get(report.get("_id"), report)
+    text = str(value).strip()
+    if not text:
+        return "Sem titulo"
 
-        for field, (area, period) in NONCONFORMITY_FIELDS.items():
-            if period != "current":
+    text_lower = text.lower()
+    if "pbo" in text_lower:
+        return "PBO"
+    if "aff" in text_lower or "automatic flight folowing" in text_lower:
+        return "AFF"
+    if "automatic flight following" in text_lower:
+        return "AFF"
+    if "cockipit" in text_lower or "cockpit" in text_lower:
+        return "Cockpit"
+
+    return text
+
+
+def build_nonconformities_dataframe(audits, reports, nonconformity_payloads=None):
+    if nonconformity_payloads is None:
+        nonconformity_payloads = []
+
+    if not nonconformity_payloads:
+        audits_by_id = {audit.get("_id"): audit for audit in audits}
+        rows = []
+
+        for report in reports or audits:
+            audit = audits_by_id.get(report.get("_id"), report)
+
+            for field, (area, period) in NONCONFORMITY_FIELDS.items():
+                if period != "current":
+                    continue
+
+                audit_items = audit.get(field) or []
+                report_items = report.get(field) or audit_items
+
+                for index, item in enumerate(report_items):
+                    normalized_item = normalize_nonconformity_item(item)
+                    audit_item = (
+                        audit_items[index] if index < len(audit_items) else None
+                    )
+                    audit_item_data = (
+                        normalize_nonconformity_item(audit_item)
+                        if audit_item is not None
+                        else {}
+                    )
+                    normalized_item["ata"] = normalized_item.get(
+                        "ata"
+                    ) or audit_item_data.get("ata")
+                    normalized_item["description"] = normalized_item.get(
+                        "description"
+                    ) or audit_item_data.get("description")
+                    normalized_item["status"] = normalized_item.get(
+                        "status"
+                    ) or audit_item_data.get("status")
+                    normalized_item["resolution_date"] = normalized_item.get(
+                        "resolution_date"
+                    ) or audit_item_data.get("resolution_date")
+
+                    rows.append(
+                        {
+                            "audit_id": report.get("_id") or audit.get("_id"),
+                            "report_name": report.get("reportName")
+                            or audit.get("reportName"),
+                            "date": report.get("date") or audit.get("date"),
+                            "publication_date": report.get("publicationDate")
+                            or audit.get("publicationDate"),
+                            "aircraft_prefix": report.get("aircraftPrefix")
+                            or audit.get("aircraftPrefix"),
+                            "operator": report.get("operator"),
+                            "operator_abbreviation": report.get("operatorAbbreviation"),
+                            "base": report.get("base"),
+                            "base_abbreviation": report.get("baseAbbreviation"),
+                            "contract": report.get("contract"),
+                            "auditing_type": report.get("auditingType")
+                            or get_nested_value(audit.get("_auditing"), "auditorType"),
+                            "audit_status": report.get("status"),
+                            "source_field": field,
+                            "area": area,
+                            "period": period,
+                            **normalized_item,
+                        }
+                    )
+
+        dataframe = pd.DataFrame(rows)
+    else:
+        reports_by_id = {report.get("_id"): report for report in reports}
+        audits_by_id = {audit.get("_id"): audit for audit in audits}
+        rows = []
+        for payload in nonconformity_payloads:
+            if not isinstance(payload, dict):
                 continue
 
-            audit_items = audit.get(field) or []
-            report_items = report.get(field) or audit_items
+            audit_id = payload.get("audit_id")
+            area = payload.get("area") or "desconhecido"
+            period = payload.get("period") or "current"
+            items = payload.get("items")
+            if not isinstance(items, list):
+                items = []
 
-            for index, item in enumerate(report_items):
+            report = reports_by_id.get(audit_id, {})
+            audit = audits_by_id.get(audit_id, {})
+
+            for item in items:
                 normalized_item = normalize_nonconformity_item(item)
-                audit_item = audit_items[index] if index < len(audit_items) else None
-                audit_item_data = (
-                    normalize_nonconformity_item(audit_item)
-                    if audit_item is not None
-                    else {}
-                )
-                normalized_item["ata"] = normalized_item.get(
-                    "ata"
-                ) or audit_item_data.get("ata")
-                normalized_item["description"] = normalized_item.get(
-                    "description"
-                ) or audit_item_data.get("description")
-                normalized_item["status"] = normalized_item.get(
-                    "status"
-                ) or audit_item_data.get("status")
-                normalized_item["resolution_date"] = normalized_item.get(
-                    "resolution_date"
-                ) or audit_item_data.get("resolution_date")
-
                 rows.append(
                     {
-                        "audit_id": report.get("_id") or audit.get("_id"),
+                        "audit_id": audit_id,
                         "report_name": report.get("reportName")
                         or audit.get("reportName"),
                         "date": report.get("date") or audit.get("date"),
@@ -323,14 +463,14 @@ def build_nonconformities_dataframe(audits, reports):
                         "auditing_type": report.get("auditingType")
                         or get_nested_value(audit.get("_auditing"), "auditorType"),
                         "audit_status": report.get("status"),
-                        "source_field": field,
+                        "source_field": None,
                         "area": area,
                         "period": period,
                         **normalized_item,
                     }
                 )
 
-    dataframe = pd.DataFrame(rows)
+        dataframe = pd.DataFrame(rows)
 
     if dataframe.empty:
         return dataframe
@@ -346,7 +486,7 @@ def build_nonconformities_dataframe(audits, reports):
 
 def build_kpis(audits_dataframe, nonconformities_dataframe):
     total_audits = len(audits_dataframe)
-    total_nonconformities = len(nonconformities_dataframe)
+    total_nonconformities = int(audits_dataframe["nonconformity_total"].sum())
     audits_with_nonconformity = int(
         audits_dataframe["has_nonconformity"].sum()
         if "has_nonconformity" in audits_dataframe
@@ -362,7 +502,7 @@ def build_kpis(audits_dataframe, nonconformities_dataframe):
     resolved_nonconformities = 0
     if not nonconformities_dataframe.empty:
         resolved_nonconformities = int(nonconformities_dataframe["is_resolved"].sum())
-        open_nonconformities = total_nonconformities - resolved_nonconformities
+        open_nonconformities = max(total_nonconformities - resolved_nonconformities, 0)
 
     return {
         "total_audits": total_audits,
@@ -514,6 +654,33 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         ["base_abbreviation", "base"],
         "nonconformities_count",
     )
+    if nonconformities_dataframe.empty:
+        nonconformities_by_status = pd.DataFrame(
+            columns=["status_label", "nonconformities_count"]
+        )
+    else:
+        nonconformities_by_status = count_by(
+            nonconformities_dataframe.assign(
+                status_label=nonconformities_dataframe["is_resolved"].map(
+                    lambda value: "Resolvida" if bool(value) else "Aberta"
+                )
+            ),
+            ["status_label"],
+            "nonconformities_count",
+        )
+    title_source = nonconformities_dataframe.copy()
+    if "title" not in title_source.columns:
+        title_source["title"] = "Sem titulo"
+    if "description" in title_source.columns:
+        title_source["title"] = title_source["title"].fillna(
+            title_source["description"]
+        )
+    title_source["title"] = title_source["title"].apply(normalize_title)
+    nonconformities_by_title = count_by(
+        title_source,
+        ["title"],
+        "nonconformities_count",
+    )
     aircraft_ranking = (
         audits_dataframe[["aircraft_prefix", "nonconformity_total", "audit_id"]]
         .groupby("aircraft_prefix", dropna=False)
@@ -603,6 +770,8 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         "nonconformities_by_operator": nonconformities_by_operator,
         "nonconformities_by_area": nonconformities_by_area,
         "nonconformities_by_base": nonconformities_by_base,
+        "nonconformities_by_status": nonconformities_by_status,
+        "nonconformities_by_title": nonconformities_by_title,
         "aircraft_ranking": aircraft_ranking,
         "aircraft_backup_summary": aircraft_backup_summary,
         "aircraft_configuration_summary": aircraft_configuration_summary,
@@ -627,9 +796,19 @@ def run_transform(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
     audits = load_json(raw_dir / AUDITS_RAW_FILE)
     reports = load_json(raw_dir / REPORTS_RAW_FILE)
     aircraft_reports = load_json(raw_dir / AIRCRAFT_REPORTS_RAW_FILE)
+    nonconformity_payloads = load_json(raw_dir / NONCONFORMITIES_CURRENT_RAW_FILE)
 
-    audits_dataframe = build_audits_dataframe(audits, reports, aircraft_reports)
-    nonconformities_dataframe = build_nonconformities_dataframe(audits, reports)
+    audits_dataframe = build_audits_dataframe(
+        audits,
+        reports,
+        aircraft_reports,
+        nonconformity_payloads,
+    )
+    nonconformities_dataframe = build_nonconformities_dataframe(
+        audits,
+        reports,
+        nonconformity_payloads,
+    )
     kpis = build_kpis(audits_dataframe, nonconformities_dataframe)
     analysis_tables = build_analysis_tables(audits_dataframe, nonconformities_dataframe)
 
@@ -664,6 +843,14 @@ def run_transform(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
     save_dataframe(
         processed_dir / NONCONFORMITIES_BY_BASE_FILE,
         analysis_tables["nonconformities_by_base"],
+    )
+    save_dataframe(
+        processed_dir / NONCONFORMITIES_BY_STATUS_FILE,
+        analysis_tables["nonconformities_by_status"],
+    )
+    save_dataframe(
+        processed_dir / NONCONFORMITIES_BY_TITLE_FILE,
+        analysis_tables["nonconformities_by_title"],
     )
     save_dataframe(
         processed_dir / AIRCRAFT_RANKING_FILE,
