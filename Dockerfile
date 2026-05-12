@@ -19,4 +19,4 @@ COPY . .
 
 EXPOSE 8501
 
-CMD ["sh", "-c", "uv run streamlit run app/dashboard.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]
+CMD ["sh", "-c", "uv run streamlit run main.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]

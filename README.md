@@ -12,9 +12,25 @@ Crie um arquivo `.env` na raiz do projeto usando o modelo abaixo:
 USERNAME=seu_usuario
 PASSWORD=sua_senha
 API_URL=https://api.rinaacc.com.br
+DASHBOARD_USERNAME=rina
+DASHBOARD_PASSWORD=rina@2026
 ```
 
 Voce tambem pode usar o arquivo `.env-example` como referencia.
+
+## Acesso ao dashboard
+
+A aplicacao possui uma tela de login para restringir o acesso aos dados.
+
+Credenciais padrao:
+
+```text
+Usuario: rina
+Senha: rina@2026
+```
+
+Para trocar o usuario e senha, configure `DASHBOARD_USERNAME` e `DASHBOARD_PASSWORD`
+no arquivo `.env`.
 
 
 
