@@ -22,7 +22,7 @@ Voce tambem pode usar o arquivo `.env-example` como referencia.
 
 A aplicacao possui uma tela de login para restringir o acesso aos dados.
 
-Credenciais padrao:
+Credenciais definidas no .env:
 
 ```text
 Usuario: rina
