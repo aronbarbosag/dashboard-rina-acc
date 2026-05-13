@@ -36,10 +36,6 @@ def apply_style():
             display: none;
         }
 
-        .stApp:has(.dashboard-view) .st-emotion-cache-wfksaw {
-            background-color: #ffffff !important;
-        }
-
         [data-testid="stSidebar"] {
             background: var(--sidebar);
             border-right: 1px solid var(--border);
@@ -243,7 +239,7 @@ def apply_style():
             letter-spacing: -0.025em;
         }
 
-        div[data-testid="stVerticalBlockBorderWrapper"] {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.chart-title) {
             background: #ffffff !important;
             border: 1px solid var(--border) !important;
             border-radius: var(--radius-md) !important;
@@ -251,14 +247,22 @@ def apply_style():
             transition: box-shadow 0.2s ease;
             padding: 1.1rem 1.2rem 0.9rem !important;
             min-height: 430px;
+            overflow: hidden;
         }
 
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.chart-title) > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.chart-title) [data-testid="stVerticalBlock"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.chart-title) [data-testid="stElementContainer"] {
             background: #ffffff !important;
         }
 
-        div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.chart-title):hover {
             box-shadow: var(--shadow-md);
+        }
+
+        .stVerticalBlock.st-emotion-cache-kv5w0i.e1rw0b1u3 {
+            background: #ffffff !important;
+
         }
 
         .chart-title {
@@ -301,6 +305,34 @@ def apply_style():
             border-radius: var(--radius-md);
             overflow: hidden;
             box-shadow: var(--shadow-sm);
+        }
+
+        .stApp:has(.dashboard-view) [data-testid="stDownloadButton"] {
+            display: flex;
+            justify-content: flex-end;
+            margin: -0.2rem 0 0.45rem;
+        }
+
+        .stApp:has(.dashboard-view) [data-testid="stDownloadButton"] button {
+            background: transparent !important;
+            border: 1px solid var(--border) !important;
+            border-radius: var(--radius-sm) !important;
+            color: var(--muted) !important;
+            font-size: 0.78rem !important;
+            font-weight: 600 !important;
+            min-height: 2rem !important;
+            padding: 0.25rem 0.65rem !important;
+            box-shadow: none !important;
+        }
+
+        .stApp:has(.dashboard-view) [data-testid="stDownloadButton"] button:hover {
+            background: var(--surface-soft) !important;
+            border-color: var(--border-strong) !important;
+            color: var(--rina-dark-blue) !important;
+        }
+
+        .stApp:has(.dashboard-view) [data-testid="stDownloadButton"] button * {
+            color: inherit !important;
         }
 
         .stTabs [data-baseweb="tab-list"] { gap: 0.4rem; border-bottom: 1px solid var(--border); }
@@ -422,7 +454,7 @@ def apply_style():
         @media print {
             [data-testid="stSidebar"], header, footer { display: none !important; }
             .block-container { padding: 0.6rem !important; }
-            div[data-testid="stVerticalBlockBorderWrapper"] {
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.chart-title) {
                 box-shadow: none !important;
                 page-break-inside: avoid;
             }

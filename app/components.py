@@ -53,6 +53,18 @@ def render_chart(title, caption, chart):
             st.altair_chart(chart, width="stretch")
 
 
+def render_table_download(dataframe, file_name, key):
+    csv_data = dataframe.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "Baixar CSV",
+        data=csv_data,
+        file_name=file_name,
+        mime="text/csv",
+        key=key,
+        disabled=dataframe.empty,
+    )
+
+
 def format_number(value):
     if pd.isna(value):
         return "0"

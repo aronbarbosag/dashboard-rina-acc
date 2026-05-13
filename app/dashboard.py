@@ -7,6 +7,7 @@ from app.components import (
     format_number,
     format_percent,
     metric_card,
+    render_table_download,
     render_chart,
     truncate_label,
 )
@@ -363,26 +364,44 @@ def render_recurrence_tables(tables, has_previous_nonconformities):
     ]
     recurrence_tabs = st.tabs(["Aeronaves", "Bases", "Operadoras"])
     with recurrence_tabs[0]:
+        recurrence_by_aircraft = tables["recurrence_by_aircraft"][
+            ["aircraft_prefix", *recurrence_columns]
+        ]
+        render_table_download(
+            recurrence_by_aircraft,
+            "recorrencia_aeronaves.csv",
+            "download_recurrence_aircraft",
+        )
         st.dataframe(
-            tables["recurrence_by_aircraft"][
-                ["aircraft_prefix", *recurrence_columns]
-            ].head(25),
+            recurrence_by_aircraft.head(25),
             width="stretch",
             hide_index=True,
         )
     with recurrence_tabs[1]:
+        recurrence_by_base = tables["recurrence_by_base"][
+            ["base_abbreviation", "base", *recurrence_columns]
+        ]
+        render_table_download(
+            recurrence_by_base,
+            "recorrencia_bases.csv",
+            "download_recurrence_bases",
+        )
         st.dataframe(
-            tables["recurrence_by_base"][
-                ["base_abbreviation", "base", *recurrence_columns]
-            ].head(25),
+            recurrence_by_base.head(25),
             width="stretch",
             hide_index=True,
         )
     with recurrence_tabs[2]:
+        recurrence_by_operator = tables["recurrence_by_operator"][
+            ["operator_abbreviation", "operator", *recurrence_columns]
+        ]
+        render_table_download(
+            recurrence_by_operator,
+            "recorrencia_operadoras.csv",
+            "download_recurrence_operators",
+        )
         st.dataframe(
-            tables["recurrence_by_operator"][
-                ["operator_abbreviation", "operator", *recurrence_columns]
-            ].head(25),
+            recurrence_by_operator.head(25),
             width="stretch",
             hide_index=True,
         )
@@ -412,8 +431,10 @@ def render_detail_tables(filtered_audits, filtered_nonconformities):
         '<div class="section-caption">Base consolidada para consulta, filtro e exportacao.</div>',
         unsafe_allow_html=True,
     )
+    audits_table = filtered_audits[table_columns].sort_values("date", ascending=False)
+    render_table_download(audits_table, "auditorias.csv", "download_audits")
     st.dataframe(
-        filtered_audits[table_columns].sort_values("date", ascending=False),
+        audits_table,
         width="stretch",
         hide_index=True,
     )
@@ -446,10 +467,16 @@ def render_detail_tables(filtered_audits, filtered_nonconformities):
         "report_name",
         "audit_id",
     ]
+    nonconformities_table = filtered_nonconformities[nonconformity_columns].sort_values(
+        "date", ascending=False
+    )
+    render_table_download(
+        nonconformities_table,
+        "nao_conformidades.csv",
+        "download_nonconformities",
+    )
     st.dataframe(
-        filtered_nonconformities[nonconformity_columns].sort_values(
-            "date", ascending=False
-        ),
+        nonconformities_table,
         width="stretch",
         hide_index=True,
     )

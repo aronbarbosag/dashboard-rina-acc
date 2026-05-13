@@ -12,8 +12,9 @@ Crie um arquivo `.env` na raiz do projeto usando o modelo abaixo:
 USERNAME=seu_usuario
 PASSWORD=sua_senha
 API_URL=https://api.rinaacc.com.br
-DASHBOARD_USERNAME=rina
-DASHBOARD_PASSWORD=rina@2026
+DASHBOARD_USERNAME=seu_usuario
+DASHBOARD_PASSWORD=sua_senha
+AUTH_CACHE_TTL_SECONDS=43200
 ```
 
 Voce tambem pode usar o arquivo `.env-example` como referencia.
@@ -22,16 +23,12 @@ Voce tambem pode usar o arquivo `.env-example` como referencia.
 
 A aplicacao possui uma tela de login para restringir o acesso aos dados.
 
-Credenciais definidas no .env:
-
-```text
-Usuario: rina
-Senha: rina@2026
-```
 
 Para trocar o usuario e senha, configure `DASHBOARD_USERNAME` e `DASHBOARD_PASSWORD`
 no arquivo `.env`.
 
+O login do dashboard fica em cache por 12 horas por padrao. Para alterar esse
+tempo, ajuste `AUTH_CACHE_TTL_SECONDS` no `.env`.
 
 
 
