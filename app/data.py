@@ -54,6 +54,13 @@ def build_sidebar_logo_html():
     return f'<div class="sidebar-logo"><img src="{uri}" alt="RINA Logo"></div>'
 
 
+def build_login_logo_html():
+    uri = _logo_data_uri()
+    if not uri:
+        return '<div class="login-logo-fallback">RINA</div>'
+    return f'<img class="login-logo" src="{uri}" alt="RINA Logo">'
+
+
 def parse_datetime_columns(dataframe, columns):
     dataframe = dataframe.copy()
     for column in columns:

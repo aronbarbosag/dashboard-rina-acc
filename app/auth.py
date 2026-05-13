@@ -8,6 +8,7 @@ from html import escape
 import streamlit as st
 
 from app.config import AUTH_CACHE_TTL_SECONDS, DASHBOARD_PASSWORD, DASHBOARD_USERNAME
+from app.data import build_login_logo_html
 
 AUTH_SESSION_KEY = "authenticated"
 AUTH_QUERY_PARAM = "auth"
@@ -118,25 +119,34 @@ def _clear_cached_session():
 
 
 def render_login():
+    logo_html = build_login_logo_html()
     st.markdown(
-        """
-        <div class="login-header">
-            <p class="login-kicker">Acesso restrito</p>
-            <h1 class="login-title">Dashboard Operacional RINA ACC</h1>
-            <p class="login-subtitle">
-                Entre com suas credenciais para visualizar os dados de auditoria.
-            </p>
-        </div>
-        """,
+        '<div class="login-view"></div>',
         unsafe_allow_html=True,
     )
 
     _, login_column, _ = st.columns([1, 1.1, 1])
     with login_column:
         with st.form("dashboard_login"):
-            st.markdown("### Login")
-            username = st.text_input("Usuario")
-            password = st.text_input("Senha", type="password")
+            st.markdown(
+                f"""
+                <div class="login-help-panel">
+                    <div>
+                        <p class="login-help-title">Acesso restrito ao dashboard</p>
+                        <p class="login-help-copy">Use seu usuario e senha configurados para entrar.</p>
+                    </div>
+                </div>
+                <div class="login-card-header">
+                    {logo_html}
+                    <h1 class="login-title">Log in</h1>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            username = st.text_input("Usuario", placeholder="Digite seu usuario")
+            password = st.text_input(
+                "Senha", type="password", placeholder="Digite sua senha"
+            )
             submitted = st.form_submit_button(
                 "Entrar",
                 type="primary",
