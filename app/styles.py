@@ -362,92 +362,142 @@ def apply_style():
             border: 1px solid var(--border);
         }
 
-        .login-header {
-            max-width: 520px;
-            margin: 3.2rem auto 1.4rem;
-            text-align: center;
+        .login-view {
+            display: none;
         }
 
-        .login-kicker {
-            color: var(--rina-blue);
-            font-size: 0.74rem;
-            font-weight: 700;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            margin: 0 0 0.55rem;
+        .stApp:has(.login-view) {
+            background: #12294b !important;
+        }
+
+        .stApp:has(.login-view) [data-testid="stSidebar"],
+        .stApp:has(.login-view) header,
+        .stApp:has(.login-view) footer {
+            display: none !important;
+        }
+
+        .stApp:has(.login-view) .block-container {
+            min-height: 100vh;
+            max-width: 980px;
+            padding: 3.2rem 1.5rem 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stApp:has(.login-view) div[data-testid="stForm"] {
+            width: min(470px, calc(100vw - 2rem));
+            margin: 0 auto !important;
+            background: #ffffff !important;
+            border: 0 !important;
+            border-radius: 7px !important;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24) !important;
+            padding: 0 2.85rem 1.65rem !important;
+            overflow: hidden;
+        }
+
+        .login-help-panel {
+            background: #ffd15c;
+            margin: 0 -2.85rem 1.35rem;
+            padding: 1.25rem 1.75rem 1.1rem;
+            color: #051a34;
+        }
+
+        .login-help-title {
+            color: #051a34;
+            font-size: 0.86rem;
+            font-weight: 650;
+            margin: 0 0 0.16rem;
+        }
+
+        .login-help-copy {
+            color: #051a34;
+            font-size: 0.76rem;
+            line-height: 1.35;
+            margin: 0;
+        }
+
+        .login-card-header {
+            text-align: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .login-logo {
+            display: block;
+            width: min(150px, 56%);
+            height: auto;
+            margin: 0 auto 1.35rem;
+            object-fit: contain;
+        }
+
+        .login-logo-fallback {
+            color: var(--rina-dark-blue);
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            margin-bottom: 1.35rem;
         }
 
         .login-title {
             color: var(--rina-dark-blue);
-            font-size: 2rem;
-            font-weight: 760;
+            font-size: 1.55rem;
+            font-weight: 800;
             line-height: 1.12;
-            margin: 0 0 0.55rem;
-        }
-
-        .login-subtitle {
-            color: var(--muted);
-            font-size: 0.95rem;
-            line-height: 1.55;
             margin: 0;
+            text-align: left;
         }
 
-        div[data-testid="stForm"] {
-            max-width: 420px;
-            margin: 0 auto !important;
-            background: #ffffff !important;
-            border: 1px solid var(--border-strong) !important;
-            border-radius: var(--radius-md) !important;
-            box-shadow: 0 14px 38px rgba(19, 41, 75, 0.08) !important;
-            padding: 1.45rem 1.55rem 1.35rem !important;
-        }
-
-        div[data-testid="stForm"] h3 {
-            color: var(--rina-dark-blue);
-            font-size: 1.1rem;
-            font-weight: 720;
-            margin: 0 0 0.9rem;
-        }
-
-        div[data-testid="stForm"] label p {
+        .stApp:has(.login-view) div[data-testid="stForm"] label p {
             color: var(--rina-dark-blue) !important;
             font-size: 0.82rem !important;
-            font-weight: 650 !important;
+            font-weight: 500 !important;
         }
 
-        div[data-testid="stForm"] [data-baseweb="input"] > div {
-            background-color: #ffffff !important;
-            border: 1px solid var(--border-strong) !important;
-            border-radius: var(--radius-sm) !important;
+        .stApp:has(.login-view) div[data-testid="stForm"] [data-baseweb="input"] > div {
+            background-color: #f0f0f0 !important;
+            border: 1px solid #f0f0f0 !important;
+            border-radius: 5px !important;
             box-shadow: none !important;
+            overflow: hidden !important;
         }
 
-        div[data-testid="stForm"] [data-baseweb="input"] > div:focus-within {
-            border-color: var(--rina-blue) !important;
-            box-shadow: 0 0 0 3px rgba(0, 118, 165, 0.12) !important;
+        .stApp:has(.login-view) div[data-testid="stForm"] [data-baseweb="input"] > div:focus-within {
+            border-color: var(--rina-dark-blue) !important;
+            box-shadow: 0 0 0 3px rgba(19, 41, 75, 0.12) !important;
         }
 
-        div[data-testid="stForm"] input {
+        .stApp:has(.login-view) div[data-testid="stForm"] [data-baseweb="input"] > div > div {
+            background-color: #f0f0f0 !important;
+        }
+
+        .stApp:has(.login-view) div[data-testid="stForm"] input {
+            background-color: #f0f0f0 !important;
             color: var(--rina-dark-blue) !important;
             font-size: 0.95rem !important;
+            height: 100% !important;
         }
 
-        div[data-testid="stForm"] button[kind="primary"] {
-            background: var(--rina-blue) !important;
-            border: 1px solid var(--rina-blue) !important;
-            border-radius: var(--radius-sm) !important;
+        .stApp:has(.login-view) div[data-testid="stForm"] input::placeholder {
+            color: #9aa1ad !important;
+            opacity: 1 !important;
+        }
+
+        .stApp:has(.login-view) div[data-testid="stForm"] button[kind="primary"] {
+            background: var(--rina-dark-blue) !important;
+            border: 1px solid var(--rina-dark-blue) !important;
+            border-radius: 3px !important;
             color: #ffffff !important;
             font-weight: 700 !important;
-            min-height: 2.75rem;
-            margin-top: 0.35rem;
+            min-height: 2.5rem;
+            margin-top: 0.45rem;
         }
 
-        div[data-testid="stForm"] button[kind="primary"]:hover {
-            background: var(--rina-dark-blue) !important;
-            border-color: var(--rina-dark-blue) !important;
+        .stApp:has(.login-view) div[data-testid="stForm"] button[kind="primary"]:hover {
+            background: color-mix(in srgb, var(--rina-dark-blue) 88%, #000000) !important;
+            border-color: color-mix(in srgb, var(--rina-dark-blue) 88%, #000000) !important;
         }
 
-        div[data-testid="stForm"] button[kind="primary"] * {
+        .stApp:has(.login-view) div[data-testid="stForm"] button[kind="primary"] * {
             color: #ffffff !important;
         }
 
