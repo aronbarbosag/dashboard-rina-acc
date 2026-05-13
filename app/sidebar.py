@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from app.config import DEFAULT_FETCH_START_DATE, LOCAL_TIMEZONE, RAW_DIR, pipeline
-from app.data import build_sidebar_logo_html
+from app.data import build_sidebar_logo_html, load_csv, load_json
 
 
 def run_update_from_sidebar(audits):
@@ -66,7 +66,8 @@ def run_update_from_sidebar(audits):
                 pipeline.run_pipeline(
                     initial_date=update_start, final_date=update_end, fetch=True
                 )
-                st.cache_data.clear()
+                load_csv.clear()
+                load_json.clear()
             st.success("Dados atualizados com sucesso.")
             st.rerun()
         except lock_error:
