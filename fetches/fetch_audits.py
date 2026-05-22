@@ -30,6 +30,7 @@ REPORTS_FILE = "audit_reports.json"
 AIRCRAFT_REPORTS_FILE = "aircraft_reports.json"
 METADATA_FILE = "fetch_metadata.json"
 NONCONFORMITIES_CURRENT_FILE = "nonconformities_current.json"
+ACCOMPANIMENTS_CURRENT_FILE = "accompaniments_current.json"
 
 
 def clean_env_value(value):
@@ -112,6 +113,7 @@ class FetchAudits:
         "operacional": "nonconformityOpr",
         "manutencao": "nonconformityMnt",
     }
+    ACCOMPANIMENT_CURRENT_ROUTE = "/accompanimentReport/{accompaniment_id}"
 
     def __init__(self, output_dir=DEFAULT_RAW_DIR):
 
@@ -567,8 +569,19 @@ class FetchAudits:
     def save_nonconformities_current(self, nonconformities):
         self.save_json(NONCONFORMITIES_CURRENT_FILE, nonconformities)
 
-    def build_metadata(self, audits, reports, aircraft_reports=None, timings=None):
+    def save_accompaniments_current(self, accompaniments):
+        self.save_json(ACCOMPANIMENTS_CURRENT_FILE, accompaniments)
+
+    def build_metadata(
+        self,
+        audits,
+        reports,
+        aircraft_reports=None,
+        accompaniments=None,
+        timings=None,
+    ):
         aircraft_reports = aircraft_reports or []
+        accompaniments = accompaniments or []
         timings = timings or {}
         audits_count = len(audits)
         return {
@@ -578,7 +591,8 @@ class FetchAudits:
             "audits_count": audits_count,
             "reports_count": len(reports),
             "aircraft_reports_count": len(aircraft_reports),
-            "estimated_request_count": 2 + (audits_count * 4),
+            "accompaniments_current_count": len(accompaniments),
+            "estimated_request_count": 2 + (audits_count * 4) + len(accompaniments),
             "max_report_workers": MAX_REPORT_WORKERS,
             "request_timeout": REQUEST_TIMEOUT,
             "request_retries": REQUEST_RETRIES,
@@ -588,6 +602,9 @@ class FetchAudits:
             "aircraft_reports_file": str(self.get_output_path(AIRCRAFT_REPORTS_FILE)),
             "nonconformities_current_file": str(
                 self.get_output_path(NONCONFORMITIES_CURRENT_FILE)
+            ),
+            "accompaniments_current_file": str(
+                self.get_output_path(ACCOMPANIMENTS_CURRENT_FILE)
             ),
         }
 
@@ -648,6 +665,52 @@ class FetchAudits:
         self.save_nonconformities_current(results)
         return results
 
+    def fetch_accompaniment(self, audit_id, accompaniment_id):
+        response = self.request_with_auth(
+            "GET",
+            self.ACCOMPANIMENT_CURRENT_ROUTE.format(accompaniment_id=accompaniment_id),
+        )
+        item = response.json()
+        if isinstance(item, dict):
+            item.setdefault("_id", accompaniment_id)
+
+        return {
+            "audit_id": audit_id,
+            "period": "current",
+            "item": item,
+        }
+
+    def _fetch_accompaniment_task(self, task):
+        audit_id, accompaniment_id = task
+        return self.fetch_accompaniment(audit_id, accompaniment_id)
+
+    def get_current_accompaniment_tasks(self, reports):
+        tasks = []
+        for report in reports:
+            if not isinstance(report, dict):
+                continue
+
+            audit_id = report.get("_id")
+            accompaniment_ids = report.get("_accompaniment") or []
+            if not audit_id or not isinstance(accompaniment_ids, list):
+                continue
+
+            tasks.extend(
+                (audit_id, accompaniment_id)
+                for accompaniment_id in accompaniment_ids
+                if accompaniment_id
+            )
+
+        return tasks
+
+    def fetch_all_accompaniments_current(self, reports):
+        tasks = self.get_current_accompaniment_tasks(reports)
+        with ThreadPoolExecutor(max_workers=MAX_REPORT_WORKERS) as executor:
+            results = list(executor.map(self._fetch_accompaniment_task, tasks))
+
+        self.save_accompaniments_current(results)
+        return results
+
     def fetch_all_reports(self):
         audits = self.fetch_audits()
         audit_ids = self.get_all_id_audits(audits)
@@ -699,6 +762,10 @@ class FetchAudits:
         nonconformities = self.fetch_all_nonconformities_current(audits)
         timings["nonconformities"] = round(perf_counter() - phase_started_at, 3)
 
+        phase_started_at = perf_counter()
+        accompaniments = self.fetch_all_accompaniments_current(reports)
+        timings["accompaniments"] = round(perf_counter() - phase_started_at, 3)
+
         timings["total"] = round(perf_counter() - total_started_at, 3)
         self._timings = timings
 
@@ -706,6 +773,7 @@ class FetchAudits:
             audits,
             reports,
             aircraft_reports,
+            accompaniments,
             timings=timings,
         )
         self.save_json(METADATA_FILE, metadata)
@@ -715,5 +783,6 @@ class FetchAudits:
             "reports": reports,
             "aircraft_reports": aircraft_reports,
             "nonconformities": nonconformities,
+            "accompaniments": accompaniments,
             "metadata": metadata,
         }

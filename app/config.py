@@ -13,6 +13,7 @@ pipeline = import_module("scripts.run_pipeline")
 transform_audits = import_module("transforms.transform_audits")
 
 AUDITS_PROCESSED_FILE = transform_audits.AUDITS_PROCESSED_FILE
+ACCOMPANIMENTS_PROCESSED_FILE = transform_audits.ACCOMPANIMENTS_PROCESSED_FILE
 KPIS_FILE = transform_audits.KPIS_FILE
 NONCONFORMITIES_PROCESSED_FILE = transform_audits.NONCONFORMITIES_PROCESSED_FILE
 PROCESSED_DIR = transform_audits.PROCESSED_DIR

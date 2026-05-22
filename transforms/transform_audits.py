@@ -10,9 +10,11 @@ AUDITS_RAW_FILE = "audits.json"
 REPORTS_RAW_FILE = "audit_reports.json"
 AIRCRAFT_REPORTS_RAW_FILE = "aircraft_reports.json"
 NONCONFORMITIES_CURRENT_RAW_FILE = "nonconformities_current.json"
+ACCOMPANIMENTS_CURRENT_RAW_FILE = "accompaniments_current.json"
 
 AUDITS_PROCESSED_FILE = "audits.csv"
 NONCONFORMITIES_PROCESSED_FILE = "non_conformities.csv"
+ACCOMPANIMENTS_PROCESSED_FILE = "accompaniments.csv"
 KPIS_FILE = "kpis.json"
 AUDITS_BY_MONTH_FILE = "audits_by_month.csv"
 AUDITS_BY_TYPE_FILE = "audits_by_type.csv"
@@ -23,7 +25,9 @@ NONCONFORMITIES_BY_OPERATOR_FILE = "nonconformities_by_operator.csv"
 NONCONFORMITIES_BY_BASE_FILE = "nonconformities_by_base.csv"
 NONCONFORMITIES_BY_STATUS_FILE = "nonconformities_by_status.csv"
 NONCONFORMITIES_BY_TITLE_FILE = "nonconformities_by_title.csv"
+ACCOMPANIMENTS_BY_TITLE_FILE = "accompaniments_by_title.csv"
 AIRCRAFT_RANKING_FILE = "aircraft_nonconformity_ranking.csv"
+AIRCRAFT_ACCOMPANIMENT_RANKING_FILE = "aircraft_accompaniment_ranking.csv"
 AIRCRAFT_BACKUP_SUMMARY_FILE = "aircraft_backup_summary.csv"
 AIRCRAFT_CONFIGURATION_SUMMARY_FILE = "aircraft_configuration_summary.csv"
 BASE_TYPE_HEATMAP_FILE = "base_auditing_type_heatmap.csv"
@@ -337,6 +341,27 @@ def normalize_nonconformity_item(item):
     }
 
 
+def normalize_accompaniment_item(item):
+    if isinstance(item, dict):
+        return {
+            "item_id": item.get("_id") or item.get("id"),
+            "title": item.get("title") or "Sem titulo",
+            "description": item.get("description") or "",
+            "status": item.get("status"),
+            "insert_date": item.get("insertDate"),
+            "solution_date": item.get("solutionDate"),
+        }
+
+    return {
+        "item_id": item,
+        "title": "Sem titulo",
+        "description": "",
+        "status": None,
+        "insert_date": None,
+        "solution_date": None,
+    }
+
+
 def normalize_title(value):
     if value is None:
         return "Sem titulo"
@@ -356,6 +381,26 @@ def normalize_title(value):
         return "Cockpit"
 
     return text
+
+
+def normalize_accompaniment_title(value):
+    if value is None:
+        return "Sem titulo"
+
+    text = str(value).strip()
+    if not text:
+        return "Sem titulo"
+
+    lookup = text.rstrip(". ").casefold()
+    canonical_titles = {
+        "seguro reta": "Seguro RETA",
+        "cockpit camera": "Cockpit Camera",
+        "cockpit câmera": "Cockpit Camera",
+        "tail camera": "Tail Camera",
+        "tail câmera": "Tail Camera",
+    }
+
+    return canonical_titles.get(lookup, text)
 
 
 def build_nonconformities_dataframe(audits, reports, nonconformity_payloads=None):
@@ -484,6 +529,56 @@ def build_nonconformities_dataframe(audits, reports, nonconformity_payloads=None
     return dataframe
 
 
+def build_accompaniments_dataframe(audits, reports, accompaniment_payloads=None):
+    reports_by_id = {report.get("_id"): report for report in reports}
+    audits_by_id = {audit.get("_id"): audit for audit in audits}
+    rows = []
+
+    for payload in accompaniment_payloads or []:
+        if not isinstance(payload, dict):
+            continue
+
+        audit_id = payload.get("audit_id")
+        report = reports_by_id.get(audit_id, {})
+        audit = audits_by_id.get(audit_id, {})
+        normalized_item = normalize_accompaniment_item(payload.get("item"))
+        rows.append(
+            {
+                "audit_id": audit_id,
+                "report_name": report.get("reportName") or audit.get("reportName"),
+                "date": report.get("date") or audit.get("date"),
+                "publication_date": report.get("publicationDate")
+                or audit.get("publicationDate"),
+                "aircraft_prefix": report.get("aircraftPrefix")
+                or audit.get("aircraftPrefix"),
+                "operator": report.get("operator"),
+                "operator_abbreviation": report.get("operatorAbbreviation"),
+                "base": report.get("base"),
+                "base_abbreviation": report.get("baseAbbreviation"),
+                "contract": report.get("contract"),
+                "auditing_type": report.get("auditingType")
+                or get_nested_value(audit.get("_auditing"), "auditorType"),
+                "audit_status": report.get("status"),
+                "period": payload.get("period") or "current",
+                **normalized_item,
+            }
+        )
+
+    dataframe = pd.DataFrame(rows)
+    if dataframe.empty:
+        return dataframe
+
+    dataframe = parse_dates(
+        dataframe,
+        ["date", "publication_date", "insert_date", "solution_date"],
+    )
+    dataframe["audit_month"] = dataframe["date"].dt.strftime("%Y-%m")
+    dataframe["is_current"] = dataframe["period"] == "current"
+    dataframe["is_previous"] = dataframe["period"] == "previous"
+
+    return dataframe
+
+
 def build_kpis(audits_dataframe, nonconformities_dataframe):
     total_audits = len(audits_dataframe)
     total_nonconformities = int(audits_dataframe["nonconformity_total"].sum())
@@ -541,6 +636,56 @@ def count_by(dataframe, columns, value_name):
         .sort_values(sort_columns, ascending=sort_ascending)
         .reset_index(drop=True)
     )
+
+
+def build_nonconformity_rate_table(
+    audits_dataframe, nonconformities_dataframe, group_columns
+):
+    audits_by_group = count_by(audits_dataframe, group_columns, "audits_count")
+    output_columns = [
+        *group_columns,
+        "audits_count",
+        "nonconformities_count",
+        "nonconformities_per_audit",
+    ]
+    if audits_by_group.empty:
+        return pd.DataFrame(columns=output_columns)
+
+    nonconformity_source = nonconformities_dataframe.copy()
+    missing_group_columns = [
+        column for column in group_columns if column not in nonconformity_source.columns
+    ]
+    if missing_group_columns and "audit_id" in nonconformity_source.columns:
+        audit_context = audits_dataframe[
+            ["audit_id", *missing_group_columns]
+        ].drop_duplicates("audit_id")
+        nonconformity_source = nonconformity_source.merge(
+            audit_context,
+            on="audit_id",
+            how="left",
+        )
+
+    nonconformities_by_group = count_by(
+        nonconformity_source,
+        group_columns,
+        "nonconformities_count",
+    )
+    rate_table = audits_by_group.merge(
+        nonconformities_by_group,
+        on=group_columns,
+        how="left",
+    )
+    rate_table["nonconformities_count"] = (
+        rate_table["nonconformities_count"].fillna(0).astype(int)
+    )
+    rate_table["nonconformities_per_audit"] = (
+        rate_table["nonconformities_count"] / rate_table["audits_count"]
+    ).round(2)
+
+    return rate_table.sort_values(
+        ["nonconformities_per_audit", "nonconformities_count", "audits_count"],
+        ascending=False,
+    ).reset_index(drop=True)
 
 
 def build_recurrence_table(dataframe, group_columns):
@@ -614,7 +759,12 @@ def build_recurrence_table(dataframe, group_columns):
     ).reset_index(drop=True)
 
 
-def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
+def build_analysis_tables(
+    audits_dataframe, nonconformities_dataframe, accompaniments_dataframe=None
+):
+    if accompaniments_dataframe is None:
+        accompaniments_dataframe = pd.DataFrame()
+
     audits_by_month = count_by(audits_dataframe, ["audit_month"], "audits_count")
     audits_by_type = count_by(audits_dataframe, ["auditing_type"], "audits_count")
     nonconformities_by_month = count_by(
@@ -639,20 +789,20 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         monthly_nonconformity_rate["nonconformities_count"] = pd.Series(dtype=int)
         monthly_nonconformity_rate["nonconformities_per_audit"] = pd.Series(dtype=float)
 
-    nonconformities_by_operator = count_by(
+    nonconformities_by_operator = build_nonconformity_rate_table(
+        audits_dataframe,
         nonconformities_dataframe,
         ["operator_abbreviation", "operator"],
-        "nonconformities_count",
     )
     nonconformities_by_area = count_by(
         nonconformities_dataframe,
         ["area"],
         "nonconformities_count",
     )
-    nonconformities_by_base = count_by(
+    nonconformities_by_base = build_nonconformity_rate_table(
+        audits_dataframe,
         nonconformities_dataframe,
         ["base_abbreviation", "base"],
-        "nonconformities_count",
     )
     if nonconformities_dataframe.empty:
         nonconformities_by_status = pd.DataFrame(
@@ -680,6 +830,25 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         title_source,
         ["title"],
         "nonconformities_count",
+    )
+    accompaniment_title_source = accompaniments_dataframe.copy()
+    if "title" not in accompaniment_title_source.columns:
+        accompaniment_title_source["title"] = "Sem titulo"
+    accompaniment_title_source["title"] = accompaniment_title_source["title"].fillna(
+        "Sem titulo"
+    )
+    accompaniment_title_source["title"] = accompaniment_title_source["title"].apply(
+        normalize_accompaniment_title
+    )
+    accompaniments_by_title = count_by(
+        accompaniment_title_source,
+        ["title"],
+        "accompaniments_count",
+    )
+    aircraft_accompaniment_ranking = count_by(
+        accompaniments_dataframe,
+        ["aircraft_prefix"],
+        "accompaniments_count",
     )
     aircraft_ranking = (
         audits_dataframe[["aircraft_prefix", "nonconformity_total", "audit_id"]]
@@ -710,10 +879,10 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
             "aircraft_configuration"
         )
 
-    aircraft_backup_summary = count_by(
+    aircraft_backup_summary = build_nonconformity_rate_table(
         audits_dataframe,
+        nonconformities_dataframe,
         ["aircraft_backup_label"],
-        "audits_count",
     )
     aircraft_configuration_summary = count_by(
         aircraft_configuration_source,
@@ -772,7 +941,9 @@ def build_analysis_tables(audits_dataframe, nonconformities_dataframe):
         "nonconformities_by_base": nonconformities_by_base,
         "nonconformities_by_status": nonconformities_by_status,
         "nonconformities_by_title": nonconformities_by_title,
+        "accompaniments_by_title": accompaniments_by_title,
         "aircraft_ranking": aircraft_ranking,
+        "aircraft_accompaniment_ranking": aircraft_accompaniment_ranking,
         "aircraft_backup_summary": aircraft_backup_summary,
         "aircraft_configuration_summary": aircraft_configuration_summary,
         "base_type_heatmap": base_type_heatmap,
@@ -797,6 +968,7 @@ def run_transform(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
     reports = load_json(raw_dir / REPORTS_RAW_FILE)
     aircraft_reports = load_json(raw_dir / AIRCRAFT_REPORTS_RAW_FILE)
     nonconformity_payloads = load_json(raw_dir / NONCONFORMITIES_CURRENT_RAW_FILE)
+    accompaniment_payloads = load_json(raw_dir / ACCOMPANIMENTS_CURRENT_RAW_FILE)
 
     audits_dataframe = build_audits_dataframe(
         audits,
@@ -809,13 +981,25 @@ def run_transform(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
         reports,
         nonconformity_payloads,
     )
+    accompaniments_dataframe = build_accompaniments_dataframe(
+        audits,
+        reports,
+        accompaniment_payloads,
+    )
     kpis = build_kpis(audits_dataframe, nonconformities_dataframe)
-    analysis_tables = build_analysis_tables(audits_dataframe, nonconformities_dataframe)
+    analysis_tables = build_analysis_tables(
+        audits_dataframe,
+        nonconformities_dataframe,
+        accompaniments_dataframe,
+    )
 
     save_dataframe(processed_dir / AUDITS_PROCESSED_FILE, audits_dataframe)
     save_dataframe(
         processed_dir / NONCONFORMITIES_PROCESSED_FILE,
         nonconformities_dataframe,
+    )
+    save_dataframe(
+        processed_dir / ACCOMPANIMENTS_PROCESSED_FILE, accompaniments_dataframe
     )
     save_json(processed_dir / KPIS_FILE, kpis)
     save_dataframe(
@@ -853,8 +1037,16 @@ def run_transform(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
         analysis_tables["nonconformities_by_title"],
     )
     save_dataframe(
+        processed_dir / ACCOMPANIMENTS_BY_TITLE_FILE,
+        analysis_tables["accompaniments_by_title"],
+    )
+    save_dataframe(
         processed_dir / AIRCRAFT_RANKING_FILE,
         analysis_tables["aircraft_ranking"],
+    )
+    save_dataframe(
+        processed_dir / AIRCRAFT_ACCOMPANIMENT_RANKING_FILE,
+        analysis_tables["aircraft_accompaniment_ranking"],
     )
     save_dataframe(
         processed_dir / AIRCRAFT_BACKUP_SUMMARY_FILE,
@@ -888,6 +1080,7 @@ def run_transform(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
     return {
         "audits": audits_dataframe,
         "non_conformities": nonconformities_dataframe,
+        "accompaniments": accompaniments_dataframe,
         "kpis": kpis,
         **analysis_tables,
     }
