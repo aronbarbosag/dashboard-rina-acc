@@ -55,6 +55,7 @@ GET https://api.rinaacc.com.br/report/{{audit_id}} HTTP/1.1
 Authorization: {{token}}
 
 ###
+
 @auditingReport = {{audit_id}}
 @aircraftReport = {{audit_id}}
 @operatorReport = {{audit_id}}
@@ -65,6 +66,15 @@ Authorization: {{token}}
 @observationMntReport = {{audit_id}}
 @_opinionReport = {{report.response.body._opinion}}
 @notepadReport = {{audit_id}}
+
+###
+
+### Current accompaniment item ids
+### Read the array returned by the audit report field `_accompaniment`.
+### Use one item id below, not the audit id.
+
+@accompaniment_id = 67752f5e21ab64001c191931
+@previous_accompaniment_id = 6774272421ab64001c19173a
 
 ###
 
@@ -102,5 +112,31 @@ Authorization: {{token}}
 
 GET https://api.rinaacc.com.br/nonconformityOprReportListPrevious/{{audit_id}} HTTP/1.1
 Authorization: {{token}}
+
+###
+
+### Get current accompaniment item by item id from `_accompaniment`
+
+GET https://api.rinaacc.com.br/accompanimentReport/{{accompaniment_id}} HTTP/1.1
+Authorization: {{token}}
+
+
+###
+
+### Get previous accompaniment item by item id from `_accompanimentPrevious`
+### The same accompanimentReport route returned the item in this project.
+
+GET https://api.rinaacc.com.br/accompanimentReport/{{previous_accompaniment_id}} HTTP/1.1
+Authorization: {{token}}
+
+
+###
+
+### Previous route observed in the API.
+### It returned 404 in this project when tested with audit ids and accompaniment item ids.
+
+GET https://api.rinaacc.com.br/accompaniment-previous/{{previous_accompaniment_id}} HTTP/1.1
+Authorization: {{token}}
+
 
 ###

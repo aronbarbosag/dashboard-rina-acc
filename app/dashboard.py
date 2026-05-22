@@ -12,6 +12,7 @@ from app.components import (
     truncate_label,
 )
 from app.config import (
+    ACCOMPANIMENTS_PROCESSED_FILE,
     AUDITS_PROCESSED_FILE,
     CHART_GOLD,
     CHART_PURPLE,
@@ -190,25 +191,37 @@ def render_summary_charts(tables, has_previous_nonconformities):
     col_left, col_right = st.columns(2)
     with col_left:
         render_chart(
-            "Nao conformidades por operadora",
-            "Ranking de operadoras com mais registros de nao conformidade.",
+            "Taxa de NC por operadora",
+            "Taxa de nao conformidades por auditoria em cada operadora.",
             make_horizontal_bar(
                 tables["nonconformities_by_operator"].head(12),
                 "operator_abbreviation:N",
-                "nonconformities_count:Q",
-                ["operator_abbreviation", "operator", "nonconformities_count"],
+                "nonconformities_per_audit:Q",
+                [
+                    "operator_abbreviation",
+                    "operator",
+                    "audits_count",
+                    "nonconformities_count",
+                    "nonconformities_per_audit",
+                ],
                 color=CHART_TEAL,
+                value_format=".2f",
             ),
         )
     with col_right:
+        accompaniment_title_source = tables["accompaniments_by_title"].head(12).copy()
+        if not accompaniment_title_source.empty:
+            accompaniment_title_source["title_short"] = accompaniment_title_source[
+                "title"
+            ].apply(truncate_label)
         render_chart(
-            "Nao conformidades por area",
-            "Separacao das nao conformidades atuais entre operacional e manutencao.",
+            "Acompanhamentos mais frequentes",
+            "Titulos mais recorrentes dos itens de acompanhamento atuais.",
             make_horizontal_bar(
-                tables["nonconformities_by_area"],
-                "area:N",
-                "nonconformities_count:Q",
-                ["area", "nonconformities_count"],
+                accompaniment_title_source,
+                "title_short:N",
+                "accompaniments_count:Q",
+                ["title", "accompaniments_count"],
                 color=CHART_GOLD,
             ),
         )
@@ -216,13 +229,13 @@ def render_summary_charts(tables, has_previous_nonconformities):
     col_left, col_right = st.columns(2)
     with col_left:
         render_chart(
-            "Nao conformidades resolvidas",
-            "Comparativo entre nao conformidades abertas e resolvidas.",
+            "Aeronaves com mais acompanhamentos",
+            "Ranking de aeronaves por volume de itens de acompanhamento atuais.",
             make_horizontal_bar(
-                tables["nonconformities_by_status"],
-                "status_label:N",
-                "nonconformities_count:Q",
-                ["status_label", "nonconformities_count"],
+                tables["aircraft_accompaniment_ranking"].head(12),
+                "aircraft_prefix:N",
+                "accompaniments_count:Q",
+                ["aircraft_prefix", "accompaniments_count"],
                 color=CHART_PURPLE,
             ),
         )
@@ -247,14 +260,21 @@ def render_summary_charts(tables, has_previous_nonconformities):
     col_left, col_right = st.columns(2)
     with col_left:
         render_chart(
-            "Nao conformidades por base",
-            "Concentracao de registros por base operacional.",
+            "Taxa de NC por base",
+            "Taxa de nao conformidades por auditoria em cada base operacional.",
             make_horizontal_bar(
                 tables["nonconformities_by_base"].head(12),
                 "base_abbreviation:N",
-                "nonconformities_count:Q",
-                ["base_abbreviation", "base", "nonconformities_count"],
+                "nonconformities_per_audit:Q",
+                [
+                    "base_abbreviation",
+                    "base",
+                    "audits_count",
+                    "nonconformities_count",
+                    "nonconformities_per_audit",
+                ],
                 color=CHART_TEAL,
+                value_format=".2f",
             ),
         )
     with col_right:
@@ -308,14 +328,20 @@ def render_summary_charts(tables, has_previous_nonconformities):
     col_left, col_right = st.columns(2)
     with col_left:
         render_chart(
-            "Titular vs backup",
-            "Quantidade de auditorias por condicao da aeronave.",
+            "Taxa de NC por titularidade",
+            "Taxa de nao conformidades por auditoria conforme a condicao da aeronave.",
             make_horizontal_bar(
                 tables["aircraft_backup_summary"],
                 "aircraft_backup_label:N",
-                "audits_count:Q",
-                ["aircraft_backup_label", "audits_count"],
+                "nonconformities_per_audit:Q",
+                [
+                    "aircraft_backup_label",
+                    "audits_count",
+                    "nonconformities_count",
+                    "nonconformities_per_audit",
+                ],
                 color=CHART_TEAL,
+                value_format=".2f",
             ),
         )
     with col_right:
@@ -407,7 +433,9 @@ def render_recurrence_tables(tables, has_previous_nonconformities):
         )
 
 
-def render_detail_tables(filtered_audits, filtered_nonconformities):
+def render_detail_tables(
+    filtered_audits, filtered_nonconformities, filtered_accompaniments
+):
     table_columns = [
         "date",
         "auditing_type",
@@ -481,6 +509,40 @@ def render_detail_tables(filtered_audits, filtered_nonconformities):
         hide_index=True,
     )
 
+    st.markdown(
+        '<div class="section-title">Tabela de acompanhamentos</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="section-caption">Itens de acompanhamento atuais por auditoria.</div>',
+        unsafe_allow_html=True,
+    )
+    for column in ["date", "aircraft_prefix", "auditing_type", "title", "description"]:
+        if column not in filtered_accompaniments.columns:
+            filtered_accompaniments[column] = ""
+    accompaniments_table = (
+        filtered_accompaniments[
+            ["date", "aircraft_prefix", "auditing_type", "title", "description"]
+        ]
+        .rename(
+            columns={
+                "title": "titulo do item de acompanhamento",
+                "description": "descricao",
+            }
+        )
+        .sort_values("date", ascending=False)
+    )
+    render_table_download(
+        accompaniments_table,
+        "acompanhamentos.csv",
+        "download_accompaniments",
+    )
+    st.dataframe(
+        accompaniments_table,
+        width="stretch",
+        hide_index=True,
+    )
+
 
 def main():
     apply_style()
@@ -492,11 +554,16 @@ def main():
 
     audits = load_csv(PROCESSED_DIR / AUDITS_PROCESSED_FILE)
     nonconformities = load_csv(PROCESSED_DIR / NONCONFORMITIES_PROCESSED_FILE)
+    accompaniments = load_csv(PROCESSED_DIR / ACCOMPANIMENTS_PROCESSED_FILE)
 
     audits = parse_datetime_columns(audits, ["date", "publication_date"])
     nonconformities = parse_datetime_columns(
         nonconformities,
         ["date", "publication_date", "resolution_date"],
+    )
+    accompaniments = parse_datetime_columns(
+        accompaniments,
+        ["date", "publication_date", "insert_date", "solution_date"],
     )
 
     render_logout_control()
@@ -505,16 +572,20 @@ def main():
 
     if audits.empty:
         st.warning(
-            "Nenhum dado processado encontrado. Use o botao Atualizar dados ou rode "
-            "`uv run python scripts/run_pipeline.py`."
+            "Nenhum dado processado encontrado. Use o botão Atualizar dados."
+            "Utilize esse botão sempre que quiser puxar os dados mais recentes."
         )
         return
 
-    filtered_audits, filtered_nonconformities = filter_dataframe(
-        audits, nonconformities
+    filtered_audits, filtered_nonconformities, filtered_accompaniments = (
+        filter_dataframe(audits, nonconformities, accompaniments)
     )
     kpis = build_kpis(filtered_audits, filtered_nonconformities)
-    tables = build_analysis_tables(filtered_audits, filtered_nonconformities)
+    tables = build_analysis_tables(
+        filtered_audits,
+        filtered_nonconformities,
+        filtered_accompaniments,
+    )
     tables = ensure_dashboard_analysis_tables(
         tables,
         filtered_audits,
@@ -530,4 +601,8 @@ def main():
     st.divider()
     render_recurrence_tables(tables, has_previous_nonconformities)
     st.divider()
-    render_detail_tables(filtered_audits, filtered_nonconformities)
+    render_detail_tables(
+        filtered_audits,
+        filtered_nonconformities,
+        filtered_accompaniments,
+    )

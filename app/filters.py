@@ -2,11 +2,13 @@ import pandas as pd
 import streamlit as st
 
 
-def filter_dataframe(audits, nonconformities):
+def filter_dataframe(audits, nonconformities, accompaniments=None):
     st.sidebar.markdown("### Filtros")
 
     if audits.empty:
-        return audits, nonconformities
+        if accompaniments is None:
+            return audits, nonconformities
+        return audits, nonconformities, accompaniments
 
     min_date = audits["date"].min().date()
     max_date = audits["date"].max().date()
@@ -51,7 +53,17 @@ def filter_dataframe(audits, nonconformities):
         nonconformities["audit_id"].isin(audit_ids)
     ].copy()
 
-    return filtered, filtered_nonconformities
+    if accompaniments is None:
+        return filtered, filtered_nonconformities
+
+    if accompaniments.empty or "audit_id" not in accompaniments.columns:
+        filtered_accompaniments = accompaniments.copy()
+    else:
+        filtered_accompaniments = accompaniments[
+            accompaniments["audit_id"].isin(audit_ids)
+        ].copy()
+
+    return filtered, filtered_nonconformities, filtered_accompaniments
 
 
 def count_dashboard_rows(dataframe, columns, value_name):

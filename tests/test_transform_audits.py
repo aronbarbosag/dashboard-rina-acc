@@ -3,6 +3,10 @@ import json
 import pandas as pd
 
 from transforms.transform_audits import (
+    ACCOMPANIMENTS_BY_TITLE_FILE,
+    ACCOMPANIMENTS_CURRENT_RAW_FILE,
+    ACCOMPANIMENTS_PROCESSED_FILE,
+    AIRCRAFT_ACCOMPANIMENT_RANKING_FILE,
     AIRCRAFT_BACKUP_SUMMARY_FILE,
     AIRCRAFT_CONFIGURATION_SUMMARY_FILE,
     AIRCRAFT_RANKING_FILE,
@@ -28,12 +32,14 @@ from transforms.transform_audits import (
     RECURRENCE_BY_OPERATOR_FILE,
     REPORTS_RAW_FILE,
     build_analysis_tables,
+    build_accompaniments_dataframe,
     build_audits_dataframe,
     build_kpis,
     build_nonconformities_dataframe,
     count_items,
     get_active_aircraft_configuration,
     load_json,
+    normalize_accompaniment_title,
     normalize_nonconformity_item,
     run_transform,
     save_json,
@@ -222,6 +228,31 @@ def sample_legacy_nonconformities_current():
     ]
 
 
+def sample_accompaniments_current():
+    return [
+        {
+            "audit_id": "audit-1",
+            "period": "current",
+            "item": {
+                "_id": "ac-1",
+                "title": "PBO em acompanhamento",
+                "description": "PBO precisa de tratamento.",
+                "insertDate": "2026-01-02T03:00:00.000Z",
+            },
+        },
+        {
+            "audit_id": "audit-2",
+            "period": "current",
+            "item": {
+                "_id": "ac-2",
+                "title": "PBO em acompanhamento",
+                "description": "Item mantido em acompanhamento.",
+                "insertDate": "2026-02-10T03:00:00.000Z",
+            },
+        },
+    ]
+
+
 def test_count_items_handles_lists_scalar_and_empty_values():
     assert count_items([1, 2]) == 2
     assert count_items("item-id") == 1
@@ -253,6 +284,19 @@ def test_normalize_nonconformity_item_supports_dict_and_id_string():
     assert dict_item["description"] == "Observation text"
     assert string_item["item_id"] == "nc-2"
     assert string_item["ata"] is None
+
+
+def test_normalize_accompaniment_title_groups_common_title_variants():
+    assert normalize_accompaniment_title("SEGURO RETA") == "Seguro RETA"
+    assert normalize_accompaniment_title("Seguro RETA") == "Seguro RETA"
+    assert normalize_accompaniment_title("COCKPIT CAMERA.") == "Cockpit Camera"
+    assert normalize_accompaniment_title("Cockpit Câmera") == "Cockpit Camera"
+    assert normalize_accompaniment_title("TAIL CAMERA") == "Tail Camera"
+    assert normalize_accompaniment_title("Tail Camera.") == "Tail Camera"
+    assert (
+        normalize_accompaniment_title("Ausencia da Tail Camera")
+        == "Ausencia da Tail Camera"
+    )
 
 
 def test_get_active_aircraft_configuration_returns_status_true_configuration():
@@ -332,6 +376,24 @@ def test_build_nonconformities_dataframe_enriches_rows_with_report_context():
     )
 
 
+def test_build_accompaniments_dataframe_enriches_current_item_details():
+    dataframe = build_accompaniments_dataframe(
+        sample_audits(),
+        sample_reports(),
+        sample_accompaniments_current(),
+    )
+
+    assert list(dataframe["item_id"]) == ["ac-1", "ac-2"]
+    assert list(dataframe["title"]) == [
+        "PBO em acompanhamento",
+        "PBO em acompanhamento",
+    ]
+    assert dataframe.loc[0, "aircraft_prefix"] == "PR-AAA"
+    assert dataframe.loc[0, "description"] == "PBO precisa de tratamento."
+    assert dataframe.loc[1, "audit_month"] == "2026-02"
+    assert bool(dataframe.loc[0, "is_current"]) is True
+
+
 def test_build_kpis_calculates_main_dashboard_numbers():
     audits_dataframe = build_audits_dataframe(
         sample_audits(),
@@ -368,8 +430,15 @@ def test_build_analysis_tables_creates_chart_ready_outputs():
     nonconformities_dataframe = build_nonconformities_dataframe(
         sample_audits(), sample_reports(), sample_nonconformities_current()
     )
+    accompaniments_dataframe = build_accompaniments_dataframe(
+        sample_audits(), sample_reports(), sample_accompaniments_current()
+    )
 
-    tables = build_analysis_tables(audits_dataframe, nonconformities_dataframe)
+    tables = build_analysis_tables(
+        audits_dataframe,
+        nonconformities_dataframe,
+        accompaniments_dataframe,
+    )
 
     assert tables["audits_by_month"].to_dict("records") == [
         {"audit_month": "2026-01", "audits_count": 1},
@@ -394,11 +463,18 @@ def test_build_analysis_tables_creates_chart_ready_outputs():
     ]
     assert set(tables["audits_by_type"]["auditing_type"]) == {"ACC", "ACCD"}
     assert tables["nonconformities_by_operator"].iloc[0]["nonconformities_count"] == 2
+    assert tables["nonconformities_by_operator"].iloc[0]["audits_count"] == 1
+    assert (
+        tables["nonconformities_by_operator"].iloc[0]["nonconformities_per_audit"]
+        == 2.0
+    )
     assert tables["nonconformities_by_area"].to_dict("records") == [
         {"area": "manutencao", "nonconformities_count": 1},
         {"area": "operacional", "nonconformities_count": 1},
     ]
     assert tables["nonconformities_by_base"].iloc[0]["base_abbreviation"] == "MEA"
+    assert tables["nonconformities_by_base"].iloc[0]["audits_count"] == 1
+    assert tables["nonconformities_by_base"].iloc[0]["nonconformities_per_audit"] == 2.0
     assert tables["nonconformities_by_status"].to_dict("records") == [
         {"status_label": "Aberta", "nonconformities_count": 2}
     ]
@@ -406,10 +482,27 @@ def test_build_analysis_tables_creates_chart_ready_outputs():
         {"title": "AFF", "nonconformities_count": 1},
         {"title": "PBO", "nonconformities_count": 1},
     ]
+    assert tables["accompaniments_by_title"].to_dict("records") == [
+        {"title": "PBO em acompanhamento", "accompaniments_count": 2}
+    ]
+    assert tables["aircraft_accompaniment_ranking"].to_dict("records") == [
+        {"aircraft_prefix": "PR-AAA", "accompaniments_count": 1},
+        {"aircraft_prefix": "PR-BBB", "accompaniments_count": 1},
+    ]
     assert tables["aircraft_ranking"].iloc[0]["aircraft_prefix"] == "PR-AAA"
     assert tables["aircraft_backup_summary"].to_dict("records") == [
-        {"aircraft_backup_label": "Backup", "audits_count": 1},
-        {"aircraft_backup_label": "Titular", "audits_count": 1},
+        {
+            "aircraft_backup_label": "Backup",
+            "audits_count": 1,
+            "nonconformities_count": 2,
+            "nonconformities_per_audit": 2.0,
+        },
+        {
+            "aircraft_backup_label": "Titular",
+            "audits_count": 1,
+            "nonconformities_count": 0,
+            "nonconformities_per_audit": 0.0,
+        },
     ]
     assert tables["aircraft_configuration_summary"].to_dict("records") == [
         {"aircraft_configuration": "Passageiros", "audits_count": 1},
@@ -467,14 +560,19 @@ def test_run_transform_reads_raw_json_and_writes_processed_files(tmp_path):
     (raw_dir / NONCONFORMITIES_CURRENT_RAW_FILE).write_text(
         json.dumps(sample_nonconformities_current())
     )
+    (raw_dir / ACCOMPANIMENTS_CURRENT_RAW_FILE).write_text(
+        json.dumps(sample_accompaniments_current())
+    )
 
     result = run_transform(raw_dir=raw_dir, processed_dir=processed_dir)
 
     assert len(result["audits"]) == 2
     assert len(result["non_conformities"]) == 2
+    assert len(result["accompaniments"]) == 2
     assert result["kpis"]["total_audits"] == 2
     assert (processed_dir / AUDITS_PROCESSED_FILE).exists()
     assert (processed_dir / NONCONFORMITIES_PROCESSED_FILE).exists()
+    assert (processed_dir / ACCOMPANIMENTS_PROCESSED_FILE).exists()
     assert (processed_dir / KPIS_FILE).exists()
     assert (processed_dir / AUDITS_BY_MONTH_FILE).exists()
     assert (processed_dir / AUDITS_BY_TYPE_FILE).exists()
@@ -485,7 +583,9 @@ def test_run_transform_reads_raw_json_and_writes_processed_files(tmp_path):
     assert (processed_dir / NONCONFORMITIES_BY_BASE_FILE).exists()
     assert (processed_dir / NONCONFORMITIES_BY_STATUS_FILE).exists()
     assert (processed_dir / NONCONFORMITIES_BY_TITLE_FILE).exists()
+    assert (processed_dir / ACCOMPANIMENTS_BY_TITLE_FILE).exists()
     assert (processed_dir / AIRCRAFT_RANKING_FILE).exists()
+    assert (processed_dir / AIRCRAFT_ACCOMPANIMENT_RANKING_FILE).exists()
     assert (processed_dir / AIRCRAFT_BACKUP_SUMMARY_FILE).exists()
     assert (processed_dir / AIRCRAFT_CONFIGURATION_SUMMARY_FILE).exists()
     assert (processed_dir / BASE_TYPE_HEATMAP_FILE).exists()

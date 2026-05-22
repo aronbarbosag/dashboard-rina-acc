@@ -60,7 +60,13 @@ def make_bar_chart(
 
 
 def make_horizontal_bar(
-    dataframe, y, x, tooltip, height=CHART_HEIGHT, color=CHART_TEAL
+    dataframe,
+    y,
+    x,
+    tooltip,
+    height=CHART_HEIGHT,
+    color=CHART_TEAL,
+    value_format=",.0f",
 ):
     if dataframe.empty:
         return None
@@ -82,7 +88,7 @@ def make_horizontal_bar(
         fontSize=11,
         fontWeight=600,
     ).encode(
-        text=alt.Text(x, format=",.0f"),
+        text=alt.Text(x, format=value_format),
     )
     chart = (bars + labels).properties(height=height)
     return chart_config(chart)

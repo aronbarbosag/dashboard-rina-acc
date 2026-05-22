@@ -2,6 +2,7 @@ import pytest
 import requests
 
 from fetches.fetch_audits import (
+    ACCOMPANIMENTS_CURRENT_FILE,
     AIRCRAFT_REPORTS_FILE,
     AUDITS_FILE,
     METADATA_FILE,
@@ -356,6 +357,7 @@ def test_build_metadata_describes_saved_outputs(tmp_path):
     assert metadata["audits_count"] == 1
     assert metadata["reports_count"] == 2
     assert metadata["aircraft_reports_count"] == 1
+    assert metadata["accompaniments_current_count"] == 0
     assert metadata["request_timeout"] == REQUEST_TIMEOUT
     assert metadata["request_retries"] == REQUEST_RETRIES
     assert metadata["audits_file"].endswith(AUDITS_FILE)
@@ -364,6 +366,7 @@ def test_build_metadata_describes_saved_outputs(tmp_path):
     assert metadata["nonconformities_current_file"].endswith(
         NONCONFORMITIES_CURRENT_FILE
     )
+    assert metadata["accompaniments_current_file"].endswith(ACCOMPANIMENTS_CURRENT_FILE)
 
 
 def test_fetch_all_nonconformities_current_fetches_each_area_and_saves(
@@ -418,6 +421,46 @@ def test_fetch_all_nonconformities_current_fetches_each_area_and_saves(
         },
     ]
     assert fetch_audits.load_json(NONCONFORMITIES_CURRENT_FILE) == results
+
+
+def test_fetch_all_accompaniments_current_fetches_report_items_and_saves(
+    tmp_path, monkeypatch
+):
+    fetch_audits = FetchAudits(output_dir=tmp_path / "raw")
+
+    monkeypatch.setattr(
+        fetch_audits,
+        "fetch_accompaniment",
+        lambda audit_id, accompaniment_id: {
+            "audit_id": audit_id,
+            "period": "current",
+            "item": {
+                "_id": accompaniment_id,
+                "title": f"title-{accompaniment_id}",
+            },
+        },
+    )
+
+    results = fetch_audits.fetch_all_accompaniments_current(
+        [
+            {"_id": "audit-1", "_accompaniment": ["ac-1", "ac-2"]},
+            {"_id": "audit-2", "_accompaniment": []},
+        ]
+    )
+
+    assert results == [
+        {
+            "audit_id": "audit-1",
+            "period": "current",
+            "item": {"_id": "ac-1", "title": "title-ac-1"},
+        },
+        {
+            "audit_id": "audit-1",
+            "period": "current",
+            "item": {"_id": "ac-2", "title": "title-ac-2"},
+        },
+    ]
+    assert fetch_audits.load_json(ACCOMPANIMENTS_CURRENT_FILE) == results
 
 
 def test_fetch_all_reports_fetches_each_audit_report_and_saves(tmp_path, monkeypatch):
@@ -500,6 +543,11 @@ def test_run_fetches_filtered_audits_reports_and_metadata(tmp_path, monkeypatch)
         "fetch_all_nonconformities_current",
         lambda audits: save_and_return_nonconformities(fetch_audits),
     )
+    monkeypatch.setattr(
+        fetch_audits,
+        "fetch_all_accompaniments_current",
+        lambda reports: save_and_return_accompaniments(fetch_audits),
+    )
 
     result = fetch_audits.run()
 
@@ -519,6 +567,7 @@ def test_run_fetches_filtered_audits_reports_and_metadata(tmp_path, monkeypatch)
         {"_id": "aircraft-report-audit-2", "backup": False, "audit_id": "audit-2"},
     ]
     assert len(result["nonconformities"]) == 8
+    assert len(result["accompaniments"]) == 1
     assert result["metadata"]["initial_date"] == "2026-04-01"
     assert result["metadata"]["final_date"] == "2026-04-30"
     assert fetch_audits.load_json(REPORTS_FILE) == result["reports"]
@@ -526,6 +575,9 @@ def test_run_fetches_filtered_audits_reports_and_metadata(tmp_path, monkeypatch)
     assert (
         fetch_audits.load_json(NONCONFORMITIES_CURRENT_FILE)
         == result["nonconformities"]
+    )
+    assert (
+        fetch_audits.load_json(ACCOMPANIMENTS_CURRENT_FILE) == result["accompaniments"]
     )
     assert fetch_audits.load_json(METADATA_FILE) == result["metadata"]
 
@@ -590,4 +642,16 @@ def save_and_return_nonconformities(fetch_audits):
         },
     ]
     fetch_audits.save_nonconformities_current(results)
+    return results
+
+
+def save_and_return_accompaniments(fetch_audits):
+    results = [
+        {
+            "audit_id": "audit-2",
+            "period": "current",
+            "item": {"_id": "ac-2", "title": "Acompanhamento"},
+        }
+    ]
+    fetch_audits.save_accompaniments_current(results)
     return results
