@@ -26,3 +26,5 @@ data/.pipeline.lock
 
 # Local Docker/runtime artifacts
 docker-compose.override.yml
+
+project.md
